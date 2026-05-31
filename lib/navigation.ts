@@ -35,7 +35,7 @@ const items = {
   receipts: { label: "Receipts", href: "/dashboard/receipts", icon: Receipt },
   expenses: { label: "Expenses", href: "/dashboard/expenses", icon: Wallet },
   reports: { label: "Reports", href: "/dashboard/reports", icon: BarChart3 },
-  emptyCases: { label: "Empty Cases", href: "/dashboard/empty-cases", icon: PackageOpen },
+  emptyCases: { label: "Empty Cases", href: "/dashboard/empty-case", icon: PackageOpen },
   expiry: { label: "Expiry Tracking", href: "/dashboard/expiry", icon: CalendarClock },
   suppliers: { label: "Suppliers", href: "/dashboard/suppliers", icon: Truck },
   users: { label: "Users", href: "/dashboard/users", icon: Users },

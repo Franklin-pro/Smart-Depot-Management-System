@@ -7,6 +7,10 @@ import type {
   User,
   Activity,
   AppNotification,
+  EmptyCaseTransaction,
+  SupplierReturn,
+  DamagedCase,
+  TransactionAudit,
 } from "./types"
 
 const today = new Date()
@@ -31,21 +35,21 @@ export const seedSuppliers: Supplier[] = [
 ]
 
 export const seedProducts: Product[] = [
-  { id: "p1", name: "Primus", brand: "Bralirwa", category: "Lager", fullCases: 320, emptyCases: 210, purchasePrice: 9000, sellingPrice: 11000, supplier: "Bralirwa Ltd", batchNumber: "BR-2024-001", manufactureDate: daysFromNow(-40), expiryDate: daysFromNow(25), lowStockThreshold: 50, createdAt: daysFromNow(-40) },
-  { id: "p2", name: "Mutzig", brand: "Bralirwa", category: "Premium Lager", fullCases: 180, emptyCases: 140, purchasePrice: 11000, sellingPrice: 13500, supplier: "Bralirwa Ltd", batchNumber: "BR-2024-002", manufactureDate: daysFromNow(-20), expiryDate: daysFromNow(120), lowStockThreshold: 40, createdAt: daysFromNow(-20) },
-  { id: "p3", name: "Turbo King", brand: "Bralirwa", category: "Stout", fullCases: 8, emptyCases: 30, purchasePrice: 12000, sellingPrice: 15000, supplier: "Bralirwa Ltd", batchNumber: "BR-2024-003", manufactureDate: daysFromNow(-90), expiryDate: daysFromNow(-2), lowStockThreshold: 30, createdAt: daysFromNow(-90) },
-  { id: "p4", name: "Skol Lager", brand: "Skol", category: "Lager", fullCases: 240, emptyCases: 180, purchasePrice: 8500, sellingPrice: 10500, supplier: "Skol Brewery", batchNumber: "SK-2024-010", manufactureDate: daysFromNow(-30), expiryDate: daysFromNow(60), lowStockThreshold: 50, createdAt: daysFromNow(-30) },
-  { id: "p5", name: "Skol Gatanu", brand: "Skol", category: "Strong Lager", fullCases: 35, emptyCases: 60, purchasePrice: 13000, sellingPrice: 16000, supplier: "Skol Brewery", batchNumber: "SK-2024-011", manufactureDate: daysFromNow(-50), expiryDate: daysFromNow(10), lowStockThreshold: 40, createdAt: daysFromNow(-50) },
-  { id: "p6", name: "Heineken", brand: "Heineken", category: "Premium Lager", fullCases: 95, emptyCases: 70, purchasePrice: 18000, sellingPrice: 22000, supplier: "East African Distributors", batchNumber: "HK-2024-005", manufactureDate: daysFromNow(-15), expiryDate: daysFromNow(200), lowStockThreshold: 30, createdAt: daysFromNow(-15) },
-  { id: "p7", name: "Guinness", brand: "Diageo", category: "Stout", fullCases: 60, emptyCases: 45, purchasePrice: 19000, sellingPrice: 24000, supplier: "East African Distributors", batchNumber: "GN-2024-007", manufactureDate: daysFromNow(-25), expiryDate: daysFromNow(40), lowStockThreshold: 25, createdAt: daysFromNow(-25) },
-  { id: "p8", name: "Amstel", brand: "Heineken", category: "Lager", fullCases: 20, emptyCases: 15, purchasePrice: 16000, sellingPrice: 20000, supplier: "Skol Brewery", batchNumber: "AM-2024-009", manufactureDate: daysFromNow(-60), expiryDate: daysFromNow(5), lowStockThreshold: 30, createdAt: daysFromNow(-60) },
+  { id: "p1", name: "Primus", brand: "Bralirwa", category: "Lager", fullCases: 320, emptyCases: 210, purchasePrice: 9000, sellingPrice: 11000, supplier: "Bralirwa Ltd", batchNumber: "BR-2024-001", manufactureDate: daysFromNow(-40), expiryDate: daysFromNow(25), lowStockThreshold: 50, depositAmount: 3000, createdAt: daysFromNow(-40) },
+  { id: "p2", name: "Mutzig", brand: "Bralirwa", category: "Premium Lager", fullCases: 180, emptyCases: 140, purchasePrice: 11000, sellingPrice: 13500, supplier: "Bralirwa Ltd", batchNumber: "BR-2024-002", manufactureDate: daysFromNow(-20), expiryDate: daysFromNow(120), lowStockThreshold: 40, depositAmount: 3500, createdAt: daysFromNow(-20) },
+  { id: "p3", name: "Turbo King", brand: "Bralirwa", category: "Stout", fullCases: 8, emptyCases: 30, purchasePrice: 12000, sellingPrice: 15000, supplier: "Bralirwa Ltd", batchNumber: "BR-2024-003", manufactureDate: daysFromNow(-90), expiryDate: daysFromNow(-2), lowStockThreshold: 30, depositAmount: 4000, createdAt: daysFromNow(-90) },
+  { id: "p4", name: "Skol Lager", brand: "Skol", category: "Lager", fullCases: 240, emptyCases: 180, purchasePrice: 8500, sellingPrice: 10500, supplier: "Skol Brewery", batchNumber: "SK-2024-010", manufactureDate: daysFromNow(-30), expiryDate: daysFromNow(60), lowStockThreshold: 50, depositAmount: 2500, createdAt: daysFromNow(-30) },
+  { id: "p5", name: "Skol Gatanu", brand: "Skol", category: "Strong Lager", fullCases: 35, emptyCases: 60, purchasePrice: 13000, sellingPrice: 16000, supplier: "Skol Brewery", batchNumber: "SK-2024-011", manufactureDate: daysFromNow(-50), expiryDate: daysFromNow(10), lowStockThreshold: 40, depositAmount: 3000, createdAt: daysFromNow(-50) },
+  { id: "p6", name: "Heineken", brand: "Heineken", category: "Premium Lager", fullCases: 95, emptyCases: 70, purchasePrice: 18000, sellingPrice: 22000, supplier: "East African Distributors", batchNumber: "HK-2024-005", manufactureDate: daysFromNow(-15), expiryDate: daysFromNow(200), lowStockThreshold: 30, depositAmount: 5000, createdAt: daysFromNow(-15) },
+  { id: "p7", name: "Guinness", brand: "Diageo", category: "Stout", fullCases: 60, emptyCases: 45, purchasePrice: 19000, sellingPrice: 24000, supplier: "East African Distributors", batchNumber: "GN-2024-007", manufactureDate: daysFromNow(-25), expiryDate: daysFromNow(40), lowStockThreshold: 25, depositAmount: 5500, createdAt: daysFromNow(-25) },
+  { id: "p8", name: "Amstel", brand: "Heineken", category: "Lager", fullCases: 20, emptyCases: 15, purchasePrice: 16000, sellingPrice: 20000, supplier: "Skol Brewery", batchNumber: "AM-2024-009", manufactureDate: daysFromNow(-60), expiryDate: daysFromNow(5), lowStockThreshold: 30, depositAmount: 4500, createdAt: daysFromNow(-60) },
 ]
 
 export const seedCustomers: Customer[] = [
-  { id: "c1", name: "Kigali Bar & Lounge", phone: "+250 788 010 010", type: "wholesale", pendingEmpties: 5, totalPurchases: 1450000, createdAt: daysFromNow(-200) },
-  { id: "c2", name: "Nyamirambo Club", phone: "+250 788 020 020", type: "wholesale", pendingEmpties: 12, totalPurchases: 980000, createdAt: daysFromNow(-150) },
-  { id: "c3", name: "Walk-in Customer", phone: "-", type: "retail", pendingEmpties: 0, totalPurchases: 320000, createdAt: daysFromNow(-100) },
-  { id: "c4", name: "Remera Restaurant", phone: "+250 788 030 030", type: "wholesale", pendingEmpties: 8, totalPurchases: 760000, createdAt: daysFromNow(-80) },
+  { id: "c1", name: "Kigali Bar & Lounge", phone: "+250 788 010 010", type: "wholesale", pendingEmpties: 5, totalPurchases: 1450000, refundableDeposits: 15000, unpaidBalance: 0, createdAt: daysFromNow(-200) },
+  { id: "c2", name: "Nyamirambo Club", phone: "+250 788 020 020", type: "wholesale", pendingEmpties: 12, totalPurchases: 980000, refundableDeposits: 36000, unpaidBalance: 5000, createdAt: daysFromNow(-150) },
+  { id: "c3", name: "Walk-in Customer", phone: "-", type: "retail", pendingEmpties: 0, totalPurchases: 320000, refundableDeposits: 0, unpaidBalance: 0, createdAt: daysFromNow(-100) },
+  { id: "c4", name: "Remera Restaurant", phone: "+250 788 030 030", type: "wholesale", pendingEmpties: 8, totalPurchases: 760000, refundableDeposits: 24000, unpaidBalance: 0, createdAt: daysFromNow(-80) },
 ]
 
 export const seedSales: Sale[] = [
@@ -79,4 +83,141 @@ export const seedNotifications: AppNotification[] = [
   { id: "n3", level: "urgent", title: "Low stock", message: "Amstel is below the low-stock threshold", createdAt: daysFromNow(0), read: false },
   { id: "n4", level: "info", title: "New stock arrival", message: "100 cases of Skol Lager added to inventory", createdAt: daysFromNow(-1), read: true },
   { id: "n5", level: "warning", title: "Missing empties", message: "Kigali Bar & Lounge has 5 pending empty cases", createdAt: daysFromNow(-1), read: false },
+]
+
+export const seedEmptyCaseTransactions: EmptyCaseTransaction[] = [
+  {
+    id: "ect1",
+    productId: "p1",
+    customerId: "c1",
+    customerName: "Kigali Bar & Lounge",
+    transactionType: "sale",
+    totalQuantity: 20,
+    returnedQuantity: 15,
+    pendingQuantity: 5,
+    depositAmount: 3000,
+    totalDepositValue: 60000,
+    refundedAmount: 45000,
+    expectedReturnDate: daysFromNow(7),
+    actualReturnDate: daysFromNow(-1),
+    status: "partial",
+    notes: "Partial return received",
+    createdBy: "Eric Mugisha",
+    createdAt: daysFromNow(-2),
+    updatedAt: daysFromNow(-1),
+  },
+  {
+    id: "ect2",
+    productId: "p4",
+    customerId: "c2",
+    customerName: "Nyamirambo Club",
+    transactionType: "sale",
+    totalQuantity: 15,
+    returnedQuantity: 8,
+    pendingQuantity: 7,
+    depositAmount: 2500,
+    totalDepositValue: 37500,
+    refundedAmount: 20000,
+    expectedReturnDate: daysFromNow(5),
+    status: "pending",
+    notes: "Pending return",
+    createdBy: "Eric Mugisha",
+    createdAt: daysFromNow(-1),
+    updatedAt: daysFromNow(-1),
+  },
+  {
+    id: "ect3",
+    productId: "p6",
+    customerId: "c4",
+    customerName: "Remera Restaurant",
+    transactionType: "sale",
+    totalQuantity: 8,
+    returnedQuantity: 0,
+    pendingQuantity: 8,
+    depositAmount: 5000,
+    totalDepositValue: 40000,
+    refundedAmount: 0,
+    expectedReturnDate: daysFromNow(3),
+    status: "overdue",
+    notes: "Overdue return",
+    createdBy: "Eric Mugisha",
+    createdAt: daysFromNow(-5),
+    updatedAt: daysFromNow(-5),
+  },
+]
+
+export const seedSupplierReturns: SupplierReturn[] = [
+  {
+    id: "sr1",
+    supplierId: "s1",
+    supplierName: "Bralirwa Ltd",
+    productId: "p1",
+    productName: "Primus",
+    quantity: 50,
+    receiptNumber: "SUP-2024-001",
+    returnedDate: daysFromNow(-2),
+    receivedBy: "Claude Niyonzima",
+    notes: "Weekly return",
+  },
+  {
+    id: "sr2",
+    supplierId: "s2",
+    supplierName: "Skol Brewery",
+    productId: "p4",
+    productName: "Skol Lager",
+    quantity: 30,
+    receiptNumber: "SUP-2024-002",
+    returnedDate: daysFromNow(-1),
+    receivedBy: "Claude Niyonzima",
+    notes: "Monthly return",
+  },
+]
+
+export const seedDamagedCases: DamagedCase[] = [
+  {
+    id: "dc1",
+    productId: "p3",
+    productName: "Turbo King",
+    quantity: 5,
+    reason: "Broken during handling",
+    damageCost: 20000,
+    reportedDate: daysFromNow(-3),
+    reportedBy: "Claude Niyonzima",
+    notes: "Cases damaged during unloading",
+  },
+  {
+    id: "dc2",
+    productId: "p5",
+    productName: "Skol Gatanu",
+    quantity: 3,
+    reason: "Water damage",
+    damageCost: 9000,
+    reportedDate: daysFromNow(-1),
+    reportedBy: "Claude Niyonzima",
+    notes: "Storage leak",
+  },
+]
+
+export const seedTransactionAudits: TransactionAudit[] = [
+  {
+    id: "ta1",
+    transactionId: "ect1",
+    transactionType: "empty_case",
+    action: "created",
+    newState: { status: "pending" },
+    performedBy: "Eric Mugisha",
+    performedAt: daysFromNow(-2),
+    notes: "Initial transaction created",
+  },
+  {
+    id: "ta2",
+    transactionId: "ect1",
+    transactionType: "empty_case",
+    action: "updated",
+    previousState: { status: "pending" },
+    newState: { status: "partial" },
+    performedBy: "Eric Mugisha",
+    performedAt: daysFromNow(-1),
+    notes: "Partial return processed",
+  },
 ]

@@ -26,6 +26,7 @@ export type Product = {
   manufactureDate: string
   expiryDate: string
   lowStockThreshold: number
+  depositAmount: number
   createdAt: string
 }
 
@@ -46,6 +47,8 @@ export type Customer = {
   type: "retail" | "wholesale"
   pendingEmpties: number
   totalPurchases: number
+  refundableDeposits: number
+  unpaidBalance: number
   createdAt: string
 }
 
@@ -110,4 +113,67 @@ export type AppNotification = {
   message: string
   createdAt: string
   read: boolean
+}
+
+// Empty Case Management Types
+export type EmptyCaseStatus = "pending" | "partial" | "completed" | "overdue" | "damaged" | "cancelled"
+
+export type TransactionType = "sale" | "customer_return" | "supplier_return" | "adjustment"
+
+export type EmptyCaseTransaction = {
+  id: string
+  productId: string
+  customerId?: string
+  customerName?: string
+  transactionType: TransactionType
+  totalQuantity: number
+  returnedQuantity: number
+  pendingQuantity: number
+  depositAmount: number
+  totalDepositValue: number
+  refundedAmount: number
+  expectedReturnDate?: string
+  actualReturnDate?: string
+  status: EmptyCaseStatus
+  notes?: string
+  createdBy: string
+  createdAt: string
+  updatedAt: string
+}
+
+export type SupplierReturn = {
+  id: string
+  supplierId: string
+  supplierName: string
+  productId: string
+  productName: string
+  quantity: number
+  receiptNumber: string
+  returnedDate: string
+  receivedBy: string
+  notes?: string
+}
+
+export type DamagedCase = {
+  id: string
+  productId: string
+  productName: string
+  quantity: number
+  reason: string
+  damageCost: number
+  reportedDate: string
+  reportedBy: string
+  notes?: string
+}
+
+export type TransactionAudit = {
+  id: string
+  transactionId: string
+  transactionType: "empty_case" | "supplier_return" | "damage_report"
+  action: "created" | "updated" | "deleted" | "processed"
+  previousState?: any
+  newState?: any
+  performedBy: string
+  performedAt: string
+  notes?: string
 }

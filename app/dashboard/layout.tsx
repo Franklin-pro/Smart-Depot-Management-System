@@ -1,32 +1,20 @@
-"use client"
-
-import { useEffect } from "react"
-import { useRouter } from "next/navigation"
-import { useApp } from "@/lib/store"
+// app/dashboard/layout.tsx
+import { SidebarProvider } from "@/components/ui/sidebar"
 import { AppSidebar } from "@/components/dashboard/app-sidebar"
-import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
-import { BrandLogo } from "@/components/brand-logo"
 
-export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const { currentUser, ready } = useApp()
-  const router = useRouter()
-
-  useEffect(() => {
-    if (ready && !currentUser) router.replace("/login")
-  }, [ready, currentUser, router])
-
-  if (!ready || !currentUser) {
-    return (
-      <main className="flex min-h-screen items-center justify-center bg-background">
-        <BrandLogo iconClassName="size-12 animate-pulse" showText={false} />
-      </main>
-    )
-  }
-
+export default function DashboardLayout({
+  children,
+}: {
+  children: React.ReactNode
+}) {
   return (
     <SidebarProvider>
-      <AppSidebar />
-      <SidebarInset>{children}</SidebarInset>
+      <div className="flex h-screen w-full">
+        <AppSidebar />
+        <main className="flex-1 overflow-auto">
+          {children}
+        </main>
+      </div>
     </SidebarProvider>
   )
 }
