@@ -363,7 +363,7 @@ function BudgetForm({
         <div className="space-y-2">
           <Label>Category *</Label>
           <Select value={category} onValueChange={(v: ExpenseCategory) => setCategory(v)}>
-            <SelectTrigger>
+            <SelectTrigger className="w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -387,6 +387,7 @@ function BudgetForm({
           <Input
             type="number"
             min="0"
+            className="w-full"
             value={allocatedAmount}
             onChange={(e) => setAllocatedAmount(parseFloat(e.target.value) || 0)}
           />
@@ -397,7 +398,7 @@ function BudgetForm({
         <div className="space-y-2">
           <Label>Month</Label>
           <Select value={month} onValueChange={setMonth}>
-            <SelectTrigger>
+            <SelectTrigger className="w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -411,7 +412,7 @@ function BudgetForm({
         <div className="space-y-2">
           <Label>Year</Label>
           <Select value={year.toString()} onValueChange={(v) => setYear(parseInt(v))}>
-            <SelectTrigger>
+            <SelectTrigger className="w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
