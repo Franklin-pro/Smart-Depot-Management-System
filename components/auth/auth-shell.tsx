@@ -16,7 +16,7 @@ export function AuthShell({ children }: { children: ReactNode }) {
       <section className="relative hidden flex-col justify-between overflow-hidden bg-sidebar p-10 text-sidebar-foreground lg:flex lg:w-[46%]">
         <div className="pointer-events-none absolute -right-24 -top-24 size-80 rounded-full bg-primary/20 blur-3xl" />
         <div className="pointer-events-none absolute -bottom-32 -left-16 size-96 rounded-full bg-primary/10 blur-3xl" />
-        <BrandLogo textClassName="text-sidebar-foreground" />
+        <BrandLogo variant="premium" size="lg" showText={true}/>
         <div className="relative z-10 space-y-8">
           <div className="space-y-3">
             <h1 className="text-balance text-3xl font-semibold leading-tight tracking-tight">
