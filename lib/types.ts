@@ -44,12 +44,19 @@ export type Customer = {
   id: string
   name: string
   phone: string
+  email: string
+  address: string
+  totalSpent: number
   type: "retail" | "wholesale"
+  updatedAt: string
+  totalTransactions: number
   pendingEmpties: number
   totalPurchases: number
   refundableDeposits: number
   unpaidBalance: number
   createdAt: string
+  city:string
+  notes:string
 }
 
 export type PaymentMethod = "cash" | "mobile" | "card" | "bank"
@@ -59,6 +66,28 @@ export type SaleItem = {
   name: string
   quantity: number
   unitPrice: number
+  subtotal: number
+  item?: [
+    {
+      product: {
+        id: string
+        name: string
+        brand: string
+        category: string
+        fullCases: number
+        emptyCases: number
+        purchasePrice: number
+        sellingPrice: number
+        supplier: string
+        batchNumber: string
+        manufactureDate: string
+        expiryDate: string
+        lowStockThreshold: number
+        depositAmount: number
+        createdAt: string
+      }
+    }
+  ]
 }
 
 export type Sale = {
@@ -74,8 +103,11 @@ export type Sale = {
   amountPaid: number
   change: number
   cashier: string
+  paymentMethod: PaymentMethod
   expectedEmpties: number
   returnedEmpties: number
+  invoiceNumber: string
+  status: "completed" | "pending"
   createdAt: string
 }
 
@@ -86,6 +118,7 @@ export type ExpenseCategory =
   | "fuel"
   | "rent"
   | "maintenance"
+  | "supplier"
   | "internet"
   | "other"
 
@@ -97,6 +130,9 @@ export type Expense = {
   date: string
   note?: string
   recordedBy: string
+  invoiceNumber: string
+  supplierName?: string
+  
 }
 
 export type Activity = {
@@ -134,6 +170,7 @@ export type EmptyCaseTransaction = {
   refundedAmount: number
   expectedReturnDate?: string
   actualReturnDate?: string
+  productName: string
   status: EmptyCaseStatus
   notes?: string
   createdBy: string

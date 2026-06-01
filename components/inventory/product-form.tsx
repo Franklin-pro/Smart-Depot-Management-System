@@ -16,7 +16,7 @@ import {
 
 const categories = ["Lager", "Premium Lager", "Strong Lager", "Stout", "Ale", "Cider"]
 
-export type ProductFormValues = Omit<Product, "id" | "createdAt">
+export type ProductFormValues = Omit<Product, "id" | "createdAt" | "updatedAt">
 
 function toDateInput(iso?: string) {
   if (!iso) return ""
@@ -33,7 +33,9 @@ export function ProductForm({
   submitLabel?: string
 }) {
   const { suppliers } = useApp()
-  const [v, setV] = useState<ProductFormValues>({
+  
+  // Initialize form state with proper defaults based on your Product type
+  const [v, setV] = useState<ProductFormValues>(() => ({
     name: initial?.name ?? "",
     brand: initial?.brand ?? "",
     category: initial?.category ?? "Lager",
@@ -46,7 +48,8 @@ export function ProductForm({
     manufactureDate: initial?.manufactureDate ?? new Date().toISOString(),
     expiryDate: initial?.expiryDate ?? new Date().toISOString(),
     lowStockThreshold: initial?.lowStockThreshold ?? 40,
-  })
+    depositAmount: initial?.depositAmount ?? 0,
+  }))
 
   function set<K extends keyof ProductFormValues>(key: K, val: ProductFormValues[K]) {
     setV((prev) => ({ ...prev, [key]: val }))
@@ -64,21 +67,21 @@ export function ProductForm({
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-4">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <div className="flex flex-col gap-2">
+        <div className="flex w-full flex-col gap-2">
           <Label htmlFor="name">Beer name</Label>
           <Input id="name" value={v.name} onChange={(e) => set("name", e.target.value)} required />
         </div>
-        <div className="flex flex-col gap-2">
+        <div className="flex w-full flex-col gap-2">
           <Label htmlFor="brand">Brand</Label>
           <Input id="brand" value={v.brand} onChange={(e) => set("brand", e.target.value)} required />
         </div>
-        <div className="flex flex-col gap-2">
+        <div className="flex w-full flex-col gap-2">
           <Label>Category</Label>
           <Select value={v.category} onValueChange={(val) => set("category", val)}>
-            <SelectTrigger>
+            <SelectTrigger className="w-full">
               <SelectValue />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent className="w-full">
               {categories.map((c) => (
                 <SelectItem key={c} value={c}>
                   {c}
@@ -87,13 +90,13 @@ export function ProductForm({
             </SelectContent>
           </Select>
         </div>
-        <div className="flex flex-col gap-2">
+        <div className="flex w-full flex-col gap-2">
           <Label>Supplier</Label>
           <Select value={v.supplier} onValueChange={(val) => set("supplier", val)}>
-            <SelectTrigger>
+            <SelectTrigger className="w-full">
               <SelectValue placeholder="Select supplier" />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent className="w-full">
               {suppliers.map((s) => (
                 <SelectItem key={s.id} value={s.name}>
                   {s.name}
@@ -102,7 +105,7 @@ export function ProductForm({
             </SelectContent>
           </Select>
         </div>
-        <div className="flex flex-col gap-2">
+        <div className="flex w-full flex-col gap-2">
           <Label htmlFor="full">Full cases</Label>
           <Input
             id="full"
@@ -113,7 +116,7 @@ export function ProductForm({
             required
           />
         </div>
-        <div className="flex flex-col gap-2">
+        <div className="flex w-full flex-col gap-2">
           <Label htmlFor="empty">Empty cases</Label>
           <Input
             id="empty"
@@ -123,7 +126,7 @@ export function ProductForm({
             onChange={(e) => set("emptyCases", Number(e.target.value))}
           />
         </div>
-        <div className="flex flex-col gap-2">
+        <div className="flex w-full flex-col gap-2">
           <Label htmlFor="purchase">Purchase price (RWF)</Label>
           <Input
             id="purchase"
@@ -134,7 +137,7 @@ export function ProductForm({
             required
           />
         </div>
-        <div className="flex flex-col gap-2">
+        <div className="flex w-full flex-col gap-2">
           <Label htmlFor="selling">Selling price (RWF)</Label>
           <Input
             id="selling"
@@ -145,11 +148,11 @@ export function ProductForm({
             required
           />
         </div>
-        <div className="flex flex-col gap-2">
+        <div className="flex w-full flex-col gap-2">
           <Label htmlFor="batch">Batch number</Label>
           <Input id="batch" value={v.batchNumber} onChange={(e) => set("batchNumber", e.target.value)} />
         </div>
-        <div className="flex flex-col gap-2">
+        <div className="flex w-full flex-col gap-2">
           <Label htmlFor="threshold">Low stock threshold</Label>
           <Input
             id="threshold"
@@ -159,7 +162,18 @@ export function ProductForm({
             onChange={(e) => set("lowStockThreshold", Number(e.target.value))}
           />
         </div>
-        <div className="flex flex-col gap-2">
+        <div className="flex w-full flex-col gap-2">
+          <Label htmlFor="deposit">Deposit Amount (RWF)</Label>
+          <Input
+            id="deposit"
+            type="number"
+            min={0}
+            value={v.depositAmount}
+            onChange={(e) => set("depositAmount", Number(e.target.value))}
+            placeholder="Empty case deposit amount"
+          />
+        </div>
+        <div className="flex w-full flex-col gap-2">
           <Label htmlFor="mfg">Manufacture date</Label>
           <Input
             id="mfg"
@@ -168,7 +182,7 @@ export function ProductForm({
             onChange={(e) => set("manufactureDate", e.target.value)}
           />
         </div>
-        <div className="flex flex-col gap-2">
+        <div className="flex w-full flex-col gap-2">
           <Label htmlFor="exp">Expiry date</Label>
           <Input
             id="exp"

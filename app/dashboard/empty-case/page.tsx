@@ -99,7 +99,7 @@ function EmptyCaseTransactionForm({
         <div className="space-y-2">
           <Label>Transaction Type</Label>
           <Select value={transactionType} onValueChange={(v: TransactionType) => setTransactionType(v)}>
-            <SelectTrigger>
+            <SelectTrigger className="w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -114,7 +114,7 @@ function EmptyCaseTransactionForm({
         <div className="space-y-2">
           <Label>Product</Label>
           <Select value={selectedProduct} onValueChange={setSelectedProduct}>
-            <SelectTrigger>
+            <SelectTrigger className="w-full">
               <SelectValue placeholder="Select product" />
             </SelectTrigger>
             <SelectContent>
@@ -132,7 +132,7 @@ function EmptyCaseTransactionForm({
         <div className="space-y-2">
           <Label>Customer</Label>
           <Select value={selectedCustomer} onValueChange={setSelectedCustomer}>
-            <SelectTrigger>
+            <SelectTrigger className="w-full">
               <SelectValue placeholder="Select customer" />
             </SelectTrigger>
             <SelectContent>
