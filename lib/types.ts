@@ -129,6 +129,7 @@ export type Expense = {
   amount: number
   date: string
   note?: string
+  status?:string
   recordedBy: string
   invoiceNumber: string
   supplierName?: string
