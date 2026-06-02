@@ -12,7 +12,7 @@ export function formatNumber(n: number) {
   return new Intl.NumberFormat("en-US").format(n)
 }
 
-export function formatDate(iso: string) {
+export function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString("en-GB", {
     day: "2-digit",
     month: "short",
