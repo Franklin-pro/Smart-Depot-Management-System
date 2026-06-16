@@ -45,6 +45,20 @@ export type ProductFormValues = Omit<Product, "id" | "createdAt" | "updatedAt"> 
   lastStockCheck?: Date
 }
 
+// Helper function to clean number input
+const cleanNumberInput = (value: string): string => {
+  // Remove leading zeros (but keep single zero if it's the only character)
+  let cleaned = value.replace(/^0+(?=\d)/, '')
+  // Remove non-numeric characters except decimal point
+  cleaned = cleaned.replace(/[^0-9.]/g, '')
+  // Prevent multiple decimal points
+  const parts = cleaned.split('.')
+  if (parts.length > 2) {
+    cleaned = parts[0] + '.' + parts.slice(1).join('')
+  }
+  return cleaned
+}
+
 function toDateInput(iso?: string) {
   if (!iso) return ""
   return new Date(iso).toISOString().slice(0, 10)
@@ -160,6 +174,26 @@ export function ProductForm({
     }))
   }
 
+  // Handle number input changes
+  const handleNumberChange = (setter: (value: number) => void, max?: number) => (e: React.ChangeEvent<HTMLInputElement>) => {
+    const rawValue = e.target.value
+    const cleanedValue = cleanNumberInput(rawValue)
+    let num = parseFloat(cleanedValue)
+    if (isNaN(num)) num = 0
+    if (max !== undefined) num = Math.min(num, max)
+    setter(num)
+  }
+
+  // Handle integer number input changes
+  const handleIntegerChange = (setter: (value: number) => void, max?: number) => (e: React.ChangeEvent<HTMLInputElement>) => {
+    const rawValue = e.target.value
+    const cleanedValue = cleanNumberInput(rawValue)
+    let num = parseInt(cleanedValue)
+    if (isNaN(num)) num = 0
+    if (max !== undefined) num = Math.min(num, max)
+    setter(num)
+  }
+
   function addPartialCase() {
     if (newPartialCaseBottles <= 0 || newPartialCaseBottles >= BOTTLES_PER_CASE) {
       toast.error(`Bottle count must be between 1 and ${BOTTLES_PER_CASE - 1}`)
@@ -200,11 +234,9 @@ export function ProductForm({
   function removePartialCase(id: string) {
     const partialCaseToRemove = (v.partialCases || []).find(pc => pc.id === id)
     if (partialCaseToRemove) {
-      // Option: convert back to full case or just remove
       setV(prev => ({
         ...prev,
         partialCases: (prev.partialCases || []).filter(pc => pc.id !== id),
-        // Optionally add back as full case? User can decide
       }))
     }
   }
@@ -232,12 +264,6 @@ export function ProductForm({
       newErrors.sellingPrice = "Selling price must be greater than purchase price"
     }
     if (!v.batchNumber.trim()) newErrors.batchNumber = "Batch number is required for tracking"
-    
-    // Validate partial cases don't exceed total capacity in a weird way
-    const totalPartialBottles = (v.partialCases || []).reduce((sum, pc) => sum + pc.bottleCount, 0)
-    if (totalPartialBottles > v.fullCases * BOTTLES_PER_CASE + totalPartialBottles) {
-      // This is just a sanity check
-    }
     
     if (missingBottles + damagedBottles > totalCapacity) {
       newErrors.bottles = "Missing and damaged bottles cannot exceed total capacity"
@@ -348,11 +374,11 @@ export function ProductForm({
             <Label htmlFor="full">Full cases ({BOTTLES_PER_CASE} bottles each) *</Label>
             <Input
               id="full"
-              type="number"
-              min={0}
-              step={1}
-              value={v.fullCases}
-              onChange={(e) => set("fullCases", Math.max(0, Number(e.target.value)))}
+              type="text"
+              inputMode="numeric"
+              placeholder="0"
+              value={v.fullCases === 0 ? '' : v.fullCases}
+              onChange={handleIntegerChange((val) => set("fullCases", Math.max(0, val)))}
               className={errors.fullCases ? "border-destructive" : ""}
             />
             {errors.fullCases && <p className="text-xs text-destructive">{errors.fullCases}</p>}
@@ -365,11 +391,11 @@ export function ProductForm({
             <Label htmlFor="empty">Empty cases</Label>
             <Input
               id="empty"
-              type="number"
-              min={0}
-              step={1}
-              value={v.emptyCases}
-              onChange={(e) => set("emptyCases", Math.max(0, Number(e.target.value)))}
+              type="text"
+              inputMode="numeric"
+              placeholder="0"
+              value={v.emptyCases === 0 ? '' : v.emptyCases}
+              onChange={handleIntegerChange((val) => set("emptyCases", Math.max(0, val)))}
             />
             <p className="text-xs text-muted-foreground">
               Deposit value: {formatCurrency(v.depositAmount * v.emptyCases)}
@@ -421,11 +447,17 @@ export function ProductForm({
                       </div>
                       <div className="flex items-center gap-2">
                         <Input
-                          type="number"
-                          min={1}
-                          max={BOTTLES_PER_CASE - 1}
-                          value={pc.bottleCount}
-                          onChange={(e) => updatePartialCaseBottles(pc.id, parseInt(e.target.value) || 0)}
+                          type="text"
+                          inputMode="numeric"
+                          placeholder="0"
+                          value={pc.bottleCount === 0 ? '' : pc.bottleCount}
+                          onChange={(e) => {
+                            const cleaned = cleanNumberInput(e.target.value)
+                            const num = parseInt(cleaned)
+                            if (!isNaN(num) && num > 0 && num < BOTTLES_PER_CASE) {
+                              updatePartialCaseBottles(pc.id, num)
+                            }
+                          }}
                           className="w-20 h-8 text-sm"
                         />
                         <Button
@@ -450,12 +482,19 @@ export function ProductForm({
               <div className="grid gap-3 sm:grid-cols-3">
                 <div>
                   <Input
-                    type="number"
-                    min={1}
-                    max={BOTTLES_PER_CASE - 1}
-                    value={newPartialCaseBottles}
-                    onChange={(e) => setNewPartialCaseBottles(Math.min(BOTTLES_PER_CASE - 1, Math.max(1, parseInt(e.target.value) || 0)))}
-                    placeholder="Bottles in case"
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="12"
+                    value={newPartialCaseBottles === 0 ? '' : newPartialCaseBottles}
+                    onChange={(e) => {
+                      const cleaned = cleanNumberInput(e.target.value)
+                      const num = parseInt(cleaned)
+                      if (!isNaN(num)) {
+                        setNewPartialCaseBottles(Math.min(BOTTLES_PER_CASE - 1, Math.max(1, num)))
+                      } else {
+                        setNewPartialCaseBottles(0)
+                      }
+                    }}
                   />
                   <p className="text-xs text-muted-foreground mt-1">
                     Bottles (1-{BOTTLES_PER_CASE - 1})
@@ -477,7 +516,7 @@ export function ProductForm({
                 <div>
                   <Input
                     placeholder="Notes (optional)"
-                    value={newPartialCaseNotes}
+                    value={newPartialCaseNotes === '' ? '' : newPartialCaseNotes}
                     onChange={(e) => setNewPartialCaseNotes(e.target.value)}
                   />
                 </div>
@@ -547,11 +586,14 @@ export function ProductForm({
                 <Label htmlFor="missing">Missing Bottles</Label>
                 <Input
                   id="missing"
-                  type="number"
-                  min={0}
-                  max={totalCapacity}
-                  value={missingBottles}
-                  onChange={(e) => setBottleInfo("missing", Math.max(0, Math.min(totalCapacity, Number(e.target.value))))}
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="0"
+                  value={missingBottles === 0 ? '' : missingBottles}
+                  onChange={handleIntegerChange(
+                    (val) => setBottleInfo("missing", Math.max(0, Math.min(totalCapacity, val))),
+                    totalCapacity
+                  )}
                 />
                 <p className="text-xs text-muted-foreground">Theft, loss, unaccounted</p>
               </div>
@@ -560,11 +602,14 @@ export function ProductForm({
                 <Label htmlFor="damaged">Damaged Bottles</Label>
                 <Input
                   id="damaged"
-                  type="number"
-                  min={0}
-                  max={totalCapacity - missingBottles}
-                  value={damagedBottles}
-                  onChange={(e) => setBottleInfo("damaged", Math.max(0, Math.min(totalCapacity - missingBottles, Number(e.target.value))))}
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="0"
+                  value={damagedBottles === 0 ? '' : damagedBottles}
+                  onChange={handleIntegerChange(
+                    (val) => setBottleInfo("damaged", Math.max(0, Math.min(totalCapacity - missingBottles, val))),
+                    totalCapacity - missingBottles
+                  )}
                 />
                 <p className="text-xs text-muted-foreground">Broken, leaking, unsellable</p>
               </div>
@@ -573,10 +618,11 @@ export function ProductForm({
                 <Label htmlFor="returned">Returned Bottles</Label>
                 <Input
                   id="returned"
-                  type="number"
-                  min={0}
-                  value={returnedBottles}
-                  onChange={(e) => setBottleInfo("returned", Math.max(0, Number(e.target.value)))}
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="0"
+                  value={returnedBottles === 0 ? '' : returnedBottles}
+                  onChange={handleIntegerChange((val) => setBottleInfo("returned", Math.max(0, val)))}
                 />
                 <p className="text-xs text-muted-foreground">Added back to inventory</p>
               </div>
@@ -638,11 +684,11 @@ export function ProductForm({
             <Label htmlFor="purchase">Purchase price (RWF) *</Label>
             <Input
               id="purchase"
-              type="number"
-              min={0}
-              step={100}
-              value={v.purchasePrice}
-              onChange={(e) => set("purchasePrice", Math.max(0, Number(e.target.value)))}
+              type="text"
+              inputMode="decimal"
+              placeholder="0"
+              value={v.purchasePrice === 0 ? '' : v.purchasePrice}
+              onChange={handleNumberChange((val) => set("purchasePrice", Math.max(0, val)))}
               className={errors.purchasePrice ? "border-destructive" : ""}
             />
             {errors.purchasePrice && <p className="text-xs text-destructive">{errors.purchasePrice}</p>}
@@ -652,11 +698,11 @@ export function ProductForm({
             <Label htmlFor="selling">Selling price (RWF) *</Label>
             <Input
               id="selling"
-              type="number"
-              min={0}
-              step={100}
-              value={v.sellingPrice}
-              onChange={(e) => set("sellingPrice", Math.max(0, Number(e.target.value)))}
+              type="text"
+              inputMode="decimal"
+              placeholder="0"
+              value={v.sellingPrice === 0 ? '' : v.sellingPrice}
+              onChange={handleNumberChange((val) => set("sellingPrice", Math.max(0, val)))}
               className={errors.sellingPrice ? "border-destructive" : ""}
             />
             {errors.sellingPrice && <p className="text-xs text-destructive">{errors.sellingPrice}</p>}
@@ -666,12 +712,11 @@ export function ProductForm({
             <Label htmlFor="deposit">Deposit Amount (RWF)</Label>
             <Input
               id="deposit"
-              type="number"
-              min={0}
-              step={50}
-              value={v.depositAmount}
-              onChange={(e) => set("depositAmount", Math.max(0, Number(e.target.value)))}
-              placeholder="Empty case deposit amount"
+              type="text"
+              inputMode="decimal"
+              placeholder="0"
+              value={v.depositAmount === 0 ? '' : v.depositAmount}
+              onChange={handleNumberChange((val) => set("depositAmount", Math.max(0, val)))}
             />
           </div>
         </div>
@@ -711,10 +756,11 @@ export function ProductForm({
             <Label htmlFor="threshold">Low stock threshold (cases)</Label>
             <Input
               id="threshold"
-              type="number"
-              min={0}
-              value={v.lowStockThreshold}
-              onChange={(e) => set("lowStockThreshold", Math.max(0, Number(e.target.value)))}
+              type="text"
+              inputMode="numeric"
+              placeholder="40"
+              value={v.lowStockThreshold === 0 ? '' : v.lowStockThreshold}
+              onChange={handleIntegerChange((val) => set("lowStockThreshold", Math.max(0, val)))}
             />
             <p className="text-xs text-muted-foreground">
               Alert when stock falls below {v.lowStockThreshold} cases

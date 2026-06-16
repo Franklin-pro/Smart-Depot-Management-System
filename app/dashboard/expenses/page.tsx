@@ -132,7 +132,21 @@ interface Budget {
   notes?: string
 }
 
-// Form components (same as before)
+// Helper function to clean number input
+const cleanNumberInput = (value: string): string => {
+  // Remove leading zeros (but keep single zero if it's the only character)
+  let cleaned = value.replace(/^0+(?=\d)/, '')
+  // Remove non-numeric characters except decimal point
+  cleaned = cleaned.replace(/[^0-9.]/g, '')
+  // Prevent multiple decimal points
+  const parts = cleaned.split('.')
+  if (parts.length > 2) {
+    cleaned = parts[0] + '.' + parts.slice(1).join('')
+  }
+  return cleaned
+}
+
+// Form components
 function ExpenseForm({ 
   onSubmit, 
   onCancel,
@@ -142,7 +156,6 @@ function ExpenseForm({
   onCancel: () => void
   initial?: Expense
 }) {
-  // ... (keep the same ExpenseForm implementation)
   const [category, setCategory] = useState<ExpenseCategory>(initial?.category || "other")
   const [description, setDescription] = useState(initial?.description || "")
   const [amount, setAmount] = useState(initial?.amount || 0)
@@ -173,9 +186,37 @@ function ExpenseForm({
     { value: "other", label: "Other Expenses", icon: DollarSign },
   ]
 
-  const handleAmountChange = () => {
-    if (quantity > 0 && unitPrice > 0) {
-      setAmount(quantity * unitPrice)
+  // Handle number input changes
+  const handleNumberChange = (setter: (value: number) => void) => (e: React.ChangeEvent<HTMLInputElement>) => {
+    const rawValue = e.target.value
+    const cleanedValue = cleanNumberInput(rawValue)
+    const num = parseFloat(cleanedValue)
+    setter(isNaN(num) ? 0 : num)
+  }
+
+  // Handle quantity change with auto-calc
+  const handleQuantityChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const rawValue = e.target.value
+    const cleanedValue = cleanNumberInput(rawValue)
+    const num = parseInt(cleanedValue) || 0
+    setQuantity(num)
+    if (num > 0 && unitPrice > 0) {
+      setAmount(num * unitPrice)
+    } else if (num === 0) {
+      setAmount(0)
+    }
+  }
+
+  // Handle unit price change with auto-calc
+  const handleUnitPriceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const rawValue = e.target.value
+    const cleanedValue = cleanNumberInput(rawValue)
+    const num = parseFloat(cleanedValue) || 0
+    setUnitPrice(num)
+    if (quantity > 0 && num > 0) {
+      setAmount(quantity * num)
+    } else if (num === 0) {
+      setAmount(0)
     }
   }
 
@@ -230,25 +271,21 @@ function ExpenseForm({
         <div className="space-y-2">
           <Label>Quantity</Label>
           <Input
-            type="number"
-            min="1"
-            value={quantity}
-            onChange={(e) => {
-              setQuantity(parseInt(e.target.value) || 0)
-              handleAmountChange()
-            }}
+            type="text"
+            inputMode="numeric"
+            placeholder="0"
+            value={quantity === 0 ? '' : quantity}
+            onChange={handleQuantityChange}
           />
         </div>
         <div className="space-y-2">
           <Label>Unit Price</Label>
           <Input
-            type="number"
-            min="0"
-            value={unitPrice}
-            onChange={(e) => {
-              setUnitPrice(parseFloat(e.target.value) || 0)
-              handleAmountChange()
-            }}
+            type="text"
+            inputMode="decimal"
+            placeholder="0.00"
+            value={unitPrice === 0 ? '' : unitPrice}
+            onChange={handleUnitPriceChange}
           />
         </div>
       </div>
@@ -256,10 +293,11 @@ function ExpenseForm({
       <div className="space-y-2">
         <Label>Amount *</Label>
         <Input
-          type="number"
-          min="0"
-          value={amount}
-          onChange={(e) => setAmount(parseFloat(e.target.value) || 0)}
+          type="text"
+          inputMode="decimal"
+          placeholder="0.00"
+          value={amount === 0 ? '' : amount}
+          onChange={handleNumberChange(setAmount)}
         />
       </div>
 
@@ -357,6 +395,13 @@ function BudgetForm({
   const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
   const years = [2024, 2025, 2026, 2027, 2028]
 
+  const handleNumberChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const rawValue = e.target.value
+    const cleanedValue = cleanNumberInput(rawValue)
+    const num = parseFloat(cleanedValue)
+    setAllocatedAmount(isNaN(num) ? 0 : num)
+  }
+
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-4">
@@ -385,11 +430,12 @@ function BudgetForm({
         <div className="space-y-2">
           <Label>Allocated Amount *</Label>
           <Input
-            type="number"
-            min="0"
+            type="text"
+            inputMode="decimal"
+            placeholder="0.00"
             className="w-full"
-            value={allocatedAmount}
-            onChange={(e) => setAllocatedAmount(parseFloat(e.target.value) || 0)}
+            value={allocatedAmount === 0 ? '' : allocatedAmount}
+            onChange={handleNumberChange}
           />
         </div>
       </div>

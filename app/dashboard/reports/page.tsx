@@ -11,7 +11,11 @@ import {
   Clock, CheckCircle, XCircle, ArrowLeft, Home,
   Sparkles, Zap, Target, Award, Activity, Layers,
   Grid3x3, BarChart4, PieChartIcon, BottleWine, 
-  PlusCircle, MinusCircle, RotateCcw, AlertTriangle as AlertTriangleIcon
+  PlusCircle, MinusCircle, RotateCcw, AlertTriangle as AlertTriangleIcon,
+  Wallet, CreditCard, Banknote, Landmark, ReceiptText,
+  ChartColumn, ChartBar, ChartLine, ChartPie,
+  TrendingDown, ArrowUpRight, ArrowDownRight,
+  Percent, Calculator, Briefcase
 } from "lucide-react"
 import { useApp } from "@/lib/store"
 import { formatCurrency, formatDate, formatNumber, daysUntil } from "@/lib/format"
@@ -67,10 +71,11 @@ import {
   Cell,
   AreaChart,
   Area,
+  ComposedChart,
 } from "recharts"
 
 // Types
-type ReportType = "sales" | "expenses" | "inventory" | "empty-cases" | "profit-loss" | "customers" | "suppliers"
+type ReportType = "financial" | "sales" | "expenses" | "inventory" | "empty-cases" | "profit-loss" | "customers" | "suppliers"
 type Period = "daily" | "weekly" | "monthly" | "quarterly" | "yearly" | "custom"
 
 interface ReportFilters {
@@ -104,6 +109,7 @@ interface ExtendedProduct {
   bottleInfo?: BottleInfo
   lastStockCheck?: Date
   depositAmount?: number
+  lowStockThreshold?: number
 }
 
 interface ReportData {
@@ -111,6 +117,7 @@ interface ReportData {
     totalRevenue: number
     totalExpenses: number
     netProfit: number
+    profitMargin: number
     totalSales: number
     totalTransactions: number
     avgOrderValue: number
@@ -124,16 +131,21 @@ interface ReportData {
     damagedBottles: number
     returnedBottles: number
     stockIntegrity: number
+    totalProducts: number
+    lowStockCount: number
+    expiringCount: number
   }
   charts: {
     salesTrend: { date: string; amount: number; count: number }[]
+    revenueExpenses: { month: string; revenue: number; expenses: number; profit: number }[]
     categoryBreakdown: { name: string; value: number; color: string }[]
     topProducts: { name: string; quantity: number; revenue: number }[]
     topCustomers: { name: string; spent: number; transactions: number }[]
-    expenseBreakdown: { name: string; amount: number }[]
-    paymentMethods: { name: string; value: number }[]
+    expenseBreakdown: { name: string; amount: number; color: string }[]
+    paymentMethods: { name: string; value: number; color: string }[]
     stockStatus: { name: string; value: number; color: string }[]
     bottleIssues: { name: string; missing: number; damaged: number; returned: number }[]
+    dailySales: { date: string; amount: number }[]
   }
   tables: {
     recentTransactions: any[]
@@ -142,10 +154,13 @@ interface ReportData {
     supplierPayments: any[]
     bottleIssuesList: any[]
     lowStockProducts: any[]
+    topSellingItems: any[]
+    expenseItems: any[]
   }
 }
 
 const BOTTLES_PER_CASE = 24
+const COLORS = ["#10b981", "#3b82f6", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899", "#06b6d4", "#84cc16", "#f97316", "#14b8a6"]
 
 // Helper functions
 const safeCapitalize = (str: string | undefined | null): string => {
@@ -173,6 +188,17 @@ const formatDateForInput = (date: Date): string => {
   return date.toISOString().split('T')[0]
 }
 
+// Clean number input helper
+const cleanNumberInput = (value: string): string => {
+  let cleaned = value.replace(/^0+(?=\d)/, '')
+  cleaned = cleaned.replace(/[^0-9.]/g, '')
+  const parts = cleaned.split('.')
+  if (parts.length > 2) {
+    cleaned = parts[0] + '.' + parts.slice(1).join('')
+  }
+  return cleaned
+}
+
 // Quick Stats Cards
 function QuickStatsCards() {
   const { products, sales = [], expenses = [] } = useApp()
@@ -184,7 +210,6 @@ function QuickStatsCards() {
     const totalProducts = products.length
     const lowStock = products.filter(p => p.fullCases < (p.lowStockThreshold || 40)).length
     
-    // Calculate bottle statistics
     const totalBottles = products.reduce((sum, p) => {
       const extendedP = p as ExtendedProduct
       const totalPossible = (p.fullCases || 0) * BOTTLES_PER_CASE
@@ -265,15 +290,18 @@ function QuickStatsCards() {
 // Report Templates
 function ReportTemplates({ onSelectTemplate }: { onSelectTemplate: (type: ReportType, period: Period) => void }) {
   const templates = [
-    { icon: TrendingUp, label: "Daily Sales", type: "sales" as ReportType, period: "daily" as Period, color: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" },
-    { icon: Package, label: "Weekly Inventory", type: "inventory" as ReportType, period: "weekly" as Period, color: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400" },
-    { icon: DollarSign, label: "Monthly P&L", type: "profit-loss" as ReportType, period: "monthly" as Period, color: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400" },
+    { icon: TrendingUp, label: "Financial Summary", type: "financial" as ReportType, period: "monthly" as Period, color: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" },
+    { icon: ShoppingCart, label: "Sales Report", type: "sales" as ReportType, period: "daily" as Period, color: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400" },
+    { icon: Package, label: "Inventory Report", type: "inventory" as ReportType, period: "weekly" as Period, color: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400" },
+    { icon: DollarSign, label: "Profit & Loss", type: "profit-loss" as ReportType, period: "monthly" as Period, color: "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400" },
+    { icon: Receipt, label: "Expense Report", type: "expenses" as ReportType, period: "monthly" as Period, color: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" },
     { icon: BottleWine, label: "Empty Cases", type: "empty-cases" as ReportType, period: "monthly" as Period, color: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400" },
-    { icon: AlertTriangleIcon, label: "Bottle Issues", type: "inventory" as ReportType, period: "monthly" as Period, color: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" },
+    { icon: Users, label: "Top Customers", type: "customers" as ReportType, period: "monthly" as Period, color: "bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-400" },
+    { icon: Truck, label: "Supplier Report", type: "suppliers" as ReportType, period: "monthly" as Period, color: "bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-400" },
   ]
   
   return (
-    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
       {templates.map((template, index) => (
         <button
           key={index}
@@ -283,11 +311,11 @@ function ReportTemplates({ onSelectTemplate }: { onSelectTemplate: (type: Report
           <div className={`p-2 rounded-lg ${template.color}`}>
             <template.icon className="size-5" />
           </div>
-          <div>
-            <p className="font-medium">{template.label}</p>
-            <p className="text-xs text-muted-foreground">Quick report generation</p>
+          <div className="flex-1">
+            <p className="font-medium text-sm">{template.label}</p>
+            <p className="text-xs text-muted-foreground">Quick generation</p>
           </div>
-          <ChevronRight className="size-4 ml-auto text-muted-foreground group-hover:translate-x-1 transition-transform" />
+          <ChevronRight className="size-4 text-muted-foreground group-hover:translate-x-1 transition-transform" />
         </button>
       ))}
     </div>
@@ -304,7 +332,7 @@ export default function ReportsPage() {
     suppliers = []
   } = useApp()
 
-  const [reportType, setReportType] = useState<ReportType>("sales")
+  const [reportType, setReportType] = useState<ReportType>("financial")
   const [period, setPeriod] = useState<Period>("monthly")
   const [customStartDate, setCustomStartDate] = useState<Date>(() => {
     const date = new Date()
@@ -314,8 +342,6 @@ export default function ReportsPage() {
   const [customEndDate, setCustomEndDate] = useState<Date>(() => new Date())
   const [generating, setGenerating] = useState(false)
   const [reportData, setReportData] = useState<ReportData | null>(null)
-
-  const COLORS = ["#10b981", "#3b82f6", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899", "#06b6d4", "#84cc16"]
 
   const getDateRange = (): { startDate: Date; endDate: Date; label: string } => {
     const now = new Date()
@@ -374,7 +400,7 @@ export default function ReportsPage() {
         return txnDate >= startDate && txnDate <= endDate
       })
       
-      // Calculate bottle statistics from products
+      // Extended products with bottle info
       const extendedProducts = products as ExtendedProduct[]
       const totalPossibleBottles = extendedProducts.reduce((sum, p) => sum + (p.fullCases * BOTTLES_PER_CASE), 0)
       const totalMissingBottles = extendedProducts.reduce((sum, p) => sum + (p.bottleInfo?.missing || 0), 0)
@@ -387,6 +413,7 @@ export default function ReportsPage() {
       const totalRevenue = filteredSales.reduce((sum, sale) => sum + (sale.total || 0), 0)
       const totalExpenses = filteredExpenses.reduce((sum, exp) => sum + (exp.amount || 0), 0)
       const netProfit = totalRevenue - totalExpenses
+      const profitMargin = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0
       const totalSales = filteredSales.reduce((sum, sale) => sum + (sale.items || []).reduce((s, i) => s + (i.quantity || 0), 0), 0)
       const totalTransactions = filteredSales.length
       const avgOrderValue = totalTransactions > 0 ? totalRevenue / totalTransactions : 0
@@ -396,6 +423,40 @@ export default function ReportsPage() {
       const pendingReturns = totalEmptyCases - returnedCases
       const depositValue = filteredEmptyCases.reduce((sum, t) => sum + (t.totalDepositValue || 0), 0)
       const refundedValue = filteredEmptyCases.reduce((sum, t) => sum + (t.refundedAmount || 0), 0)
+      
+      const totalProducts = products.length
+      const lowStockCount = products.filter(p => p.fullCases < (p.lowStockThreshold || 40)).length
+      const expiringCount = products.filter(p => {
+        if (!p.expiryDate) return false
+        const daysLeft = daysUntil(p.expiryDate)
+        return daysLeft >= 0 && daysLeft <= 30
+      }).length
+      
+      // Revenue vs Expenses trend
+      const monthlyMap = new Map<string, { revenue: number; expenses: number }>()
+      
+      filteredSales.forEach(sale => {
+        const month = new Date(sale.createdAt).toLocaleString('default', { month: 'short', year: 'numeric' })
+        const existing = monthlyMap.get(month) || { revenue: 0, expenses: 0 }
+        existing.revenue += sale.total || 0
+        monthlyMap.set(month, existing)
+      })
+      
+      filteredExpenses.forEach(expense => {
+        const month = new Date(expense.date).toLocaleString('default', { month: 'short', year: 'numeric' })
+        const existing = monthlyMap.get(month) || { revenue: 0, expenses: 0 }
+        existing.expenses += expense.amount || 0
+        monthlyMap.set(month, existing)
+      })
+      
+      const revenueExpenses = Array.from(monthlyMap.entries())
+        .map(([month, data]) => ({
+          month,
+          revenue: data.revenue,
+          expenses: data.expenses,
+          profit: data.revenue - data.expenses
+        }))
+        .sort((a, b) => new Date(a.month).getTime() - new Date(b.month).getTime())
       
       // Stock status breakdown
       const stockStatus = [
@@ -429,6 +490,12 @@ export default function ReportsPage() {
       const salesTrend = Array.from(salesByDate.entries())
         .map(([date, data]) => ({ date, amount: data.amount, count: data.count }))
         .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+      
+      // Daily sales for heatmap
+      const dailySales = filteredSales.map(sale => ({
+        date: new Date(sale.createdAt).toLocaleDateString(),
+        amount: sale.total || 0
+      }))
       
       // Category breakdown
       const categoryMap = new Map<string, number>()
@@ -501,9 +568,10 @@ export default function ReportsPage() {
         expenseByCategory.set(category, (expenseByCategory.get(category) || 0) + (expense.amount || 0))
       })
       
-      const expenseBreakdown = Array.from(expenseByCategory.entries()).map(([name, amount]) => ({
+      const expenseBreakdown = Array.from(expenseByCategory.entries()).map(([name, amount], index) => ({
         name: safeCapitalize(name),
-        amount
+        amount,
+        color: COLORS[(index + 3) % COLORS.length]
       }))
       
       // Payment methods
@@ -515,9 +583,10 @@ export default function ReportsPage() {
       
       const paymentMethods = Array.from(paymentMethodMap.entries())
         .filter(([name]) => name && typeof name === 'string' && name.length > 0)
-        .map(([name, value]) => ({
+        .map(([name, value], index) => ({
           name: safeCapitalize(name),
-          value
+          value,
+          color: COLORS[(index + 5) % COLORS.length]
         }))
       
       // Tables data
@@ -586,11 +655,25 @@ export default function ReportsPage() {
           lastCheck: p.lastStockCheck ? safeFormatDate(p.lastStockCheck) : "Never"
         }))
       
+      const topSellingItems = Array.from(productSales.values())
+        .sort((a, b) => b.revenue - a.revenue)
+        .slice(0, 10)
+      
+      const expenseItems = filteredExpenses
+        .slice(0, 10)
+        .map(e => ({
+          description: e.note || "N/A",
+          category: e.category || "other",
+          amount: e.amount || 0,
+          date: safeFormatDate(e.date)
+        }))
+      
       setReportData({
         summary: {
           totalRevenue,
           totalExpenses,
           netProfit,
+          profitMargin,
           totalSales,
           totalTransactions,
           avgOrderValue,
@@ -603,17 +686,22 @@ export default function ReportsPage() {
           missingBottles: totalMissingBottles,
           damagedBottles: totalDamagedBottles,
           returnedBottles: totalReturnedBottles,
-          stockIntegrity
+          stockIntegrity,
+          totalProducts,
+          lowStockCount,
+          expiringCount
         },
         charts: {
           salesTrend,
+          revenueExpenses,
           categoryBreakdown,
           topProducts,
           topCustomers,
           expenseBreakdown,
           paymentMethods,
           stockStatus,
-          bottleIssues
+          bottleIssues,
+          dailySales
         },
         tables: {
           recentTransactions,
@@ -621,7 +709,9 @@ export default function ReportsPage() {
           expiringProducts,
           supplierPayments,
           bottleIssuesList,
-          lowStockProducts
+          lowStockProducts,
+          topSellingItems,
+          expenseItems
         }
       })
       
@@ -690,10 +780,11 @@ export default function ReportsPage() {
                 <div className="space-y-2">
                   <Label>Report Type</Label>
                   <Select value={reportType} onValueChange={(v: ReportType) => setReportType(v)}>
-                    <SelectTrigger>
+                    <SelectTrigger className="w-full">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="financial">Financial Report</SelectItem>
                       <SelectItem value="sales">Sales Report</SelectItem>
                       <SelectItem value="expenses">Expenses Report</SelectItem>
                       <SelectItem value="inventory">Inventory Report</SelectItem>
@@ -708,7 +799,7 @@ export default function ReportsPage() {
                 <div className="space-y-2">
                   <Label>Period</Label>
                   <Select value={period} onValueChange={(v: Period) => setPeriod(v)}>
-                    <SelectTrigger>
+                    <SelectTrigger className="w-full">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -777,9 +868,9 @@ export default function ReportsPage() {
           description="Generate comprehensive business reports and insights"
         />
         
-        <div className="flex flex-col gap-6 p-4 md:p-6">
+        <div className="flex flex-col gap-6 p-4 md:p-6 print:gap-4">
           {/* Report Controls */}
-          <Card className="p-6">
+          <Card className="p-6 print:hidden">
             <div className="flex flex-col gap-4">
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                 <div className="space-y-2">
@@ -789,6 +880,7 @@ export default function ReportsPage() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="financial">Financial Report</SelectItem>
                       <SelectItem value="sales">Sales Report</SelectItem>
                       <SelectItem value="expenses">Expenses Report</SelectItem>
                       <SelectItem value="inventory">Inventory Report</SelectItem>
@@ -852,14 +944,14 @@ export default function ReportsPage() {
           </Card>
           
           {/* Date Range Indicator */}
-          <div className="flex justify-between items-center flex-wrap gap-4">
+          <div className="flex justify-between items-center flex-wrap gap-4 print:flex-col print:items-start">
             <div>
               <h2 className="text-2xl font-bold capitalize">{reportType} Report</h2>
               <p className="text-muted-foreground">
                 {safeFormatDate(startDate)} - {safeFormatDate(endDate)} ({label})
               </p>
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-2 print:hidden">
               <Button variant="outline" size="sm" onClick={exportCSV}>
                 <FileSpreadsheet className="size-4 mr-2" />
                 CSV
@@ -897,7 +989,7 @@ export default function ReportsPage() {
                   <p className="text-sm text-muted-foreground">Total Expenses</p>
                   <p className="text-2xl font-bold text-red-600">{formatCurrency(reportData.summary.totalExpenses)}</p>
                 </div>
-                <TrendingUp className="size-8 text-red-500 rotate-180" />
+                <TrendingDown className="size-8 text-red-500" />
               </div>
             </Card>
             
@@ -916,60 +1008,64 @@ export default function ReportsPage() {
             <Card className="p-4">
               <div className="flex items-center justify-between">
                 <div>
+                  <p className="text-sm text-muted-foreground">Profit Margin</p>
+                  <p className={`text-2xl font-bold ${reportData.summary.profitMargin >= 0 ? "text-green-600" : "text-red-600"}`}>
+                    {reportData.summary.profitMargin.toFixed(1)}%
+                  </p>
+                </div>
+                <Percent className="size-8 text-purple-500" />
+              </div>
+            </Card>
+          </div>
+          
+          {/* Secondary Stats */}
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            <Card className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">Total Transactions</p>
+                  <p className="text-2xl font-bold">{formatNumber(reportData.summary.totalTransactions)}</p>
+                </div>
+                <ShoppingCart className="size-8 text-blue-500" />
+              </div>
+            </Card>
+            
+            <Card className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">Avg Order Value</p>
+                  <p className="text-2xl font-bold">{formatCurrency(reportData.summary.avgOrderValue)}</p>
+                </div>
+                <Wallet className="size-8 text-indigo-500" />
+              </div>
+            </Card>
+            
+            <Card className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
                   <p className="text-sm text-muted-foreground">Stock Integrity</p>
                   <p className="text-2xl font-bold text-purple-600">{reportData.summary.stockIntegrity.toFixed(1)}%</p>
                 </div>
                 <Activity className="size-8 text-purple-500" />
               </div>
             </Card>
-          </div>
-          
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            <Card className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Total Bottles</p>
-                  <p className="text-2xl font-bold">{formatNumber(reportData.summary.totalBottles)}</p>
-                </div>
-                <BottleWine className="size-8 text-orange-500" />
-              </div>
-            </Card>
             
             <Card className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-muted-foreground">Missing Bottles</p>
-                  <p className="text-2xl font-bold text-red-600">{formatNumber(reportData.summary.missingBottles)}</p>
+                  <p className="text-sm text-muted-foreground">Low Stock Items</p>
+                  <p className="text-2xl font-bold text-orange-600">{reportData.summary.lowStockCount}</p>
                 </div>
-                <AlertTriangleIcon className="size-8 text-red-500" />
-              </div>
-            </Card>
-            
-            <Card className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Damaged Bottles</p>
-                  <p className="text-2xl font-bold text-yellow-600">{formatNumber(reportData.summary.damagedBottles)}</p>
-                </div>
-                <AlertCircle className="size-8 text-yellow-500" />
-              </div>
-            </Card>
-            
-            <Card className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Returned Bottles</p>
-                  <p className="text-2xl font-bold text-green-600">{formatNumber(reportData.summary.returnedBottles)}</p>
-                </div>
-                <RotateCcw className="size-8 text-green-500" />
+                <AlertCircle className="size-8 text-orange-500" />
               </div>
             </Card>
           </div>
           
           {/* Charts Section */}
-          <Tabs defaultValue="trends" className="space-y-4">
-            <TabsList className="flex-wrap">
-              <TabsTrigger value="trends">Sales Trends</TabsTrigger>
+          <Tabs defaultValue="trends" className="space-y-4 print:block">
+            <TabsList className="flex-wrap print:hidden">
+              <TabsTrigger value="trends">Revenue & Expenses</TabsTrigger>
+              <TabsTrigger value="sales">Sales Analysis</TabsTrigger>
               <TabsTrigger value="stock">Stock Status</TabsTrigger>
               <TabsTrigger value="bottles">Bottle Issues</TabsTrigger>
               <TabsTrigger value="categories">Categories</TabsTrigger>
@@ -977,29 +1073,67 @@ export default function ReportsPage() {
               <TabsTrigger value="expenses">Expenses</TabsTrigger>
             </TabsList>
             
-            <TabsContent value="trends" className="space-y-4">
+            <TabsContent value="trends" className="space-y-4 print:block">
               <Card className="p-6">
-                <h3 className="text-lg font-semibold mb-4">Sales Trend</h3>
+                <h3 className="text-lg font-semibold mb-4">Revenue vs Expenses Trend</h3>
                 <ResponsiveContainer width="100%" height={400}>
-                  <LineChart data={reportData.charts.salesTrend}>
+                  <ComposedChart data={reportData.charts.revenueExpenses}>
                     <CartesianGrid strokeDasharray="3 3" className="stroke-gray-200 dark:stroke-gray-800" />
-                    <XAxis dataKey="date" />
-                    <YAxis yAxisId="left" tickFormatter={(v) => formatCurrency(v)} />
-                    <YAxis yAxisId="right" orientation="right" />
+                    <XAxis dataKey="month" />
+                    <YAxis tickFormatter={(v) => formatCurrency(v)} />
                     <RechartsTooltip 
                       formatter={(value: number, name: string) => 
-                        name === "amount" ? formatCurrency(value) : value
+                        name === "profit" ? formatCurrency(value) : formatCurrency(value)
                       }
                     />
                     <Legend />
-                    <Line yAxisId="left" type="monotone" dataKey="amount" stroke="#10b981" name="Revenue" strokeWidth={2} />
-                    <Line yAxisId="right" type="monotone" dataKey="count" stroke="#3b82f6" name="Transactions" strokeWidth={2} />
-                  </LineChart>
+                    <Bar dataKey="revenue" fill="#10b981" name="Revenue" />
+                    <Bar dataKey="expenses" fill="#ef4444" name="Expenses" />
+                    <Line type="monotone" dataKey="profit" stroke="#3b82f6" name="Profit" strokeWidth={3} dot={{ r: 4 }} />
+                  </ComposedChart>
                 </ResponsiveContainer>
               </Card>
             </TabsContent>
             
-            <TabsContent value="stock" className="space-y-4">
+            <TabsContent value="sales" className="space-y-4 print:block">
+              <Card className="p-6">
+                <h3 className="text-lg font-semibold mb-4">Sales Trend</h3>
+                <ResponsiveContainer width="100%" height={400}>
+                  <AreaChart data={reportData.charts.salesTrend}>
+                    <CartesianGrid strokeDasharray="3 3" className="stroke-gray-200 dark:stroke-gray-800" />
+                    <XAxis dataKey="date" />
+                    <YAxis tickFormatter={(v) => formatCurrency(v)} />
+                    <RechartsTooltip formatter={(value: number) => formatCurrency(value)} />
+                    <Area type="monotone" dataKey="amount" stroke="#10b981" fill="#10b98140" name="Sales" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </Card>
+              
+              <Card className="p-6">
+                <h3 className="text-lg font-semibold mb-4">Payment Methods</h3>
+                <ResponsiveContainer width="100%" height={300}>
+                  <RechartsPieChart>
+                    <Pie
+                      data={reportData.charts.paymentMethods}
+                      cx="50%"
+                      cy="50%"
+                      labelLine={false}
+                      label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                      outerRadius={120}
+                      fill="#8884d8"
+                      dataKey="value"
+                    >
+                      {reportData.charts.paymentMethods.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.color || COLORS[index % COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <RechartsTooltip formatter={(value: number) => formatCurrency(value)} />
+                  </RechartsPieChart>
+                </ResponsiveContainer>
+              </Card>
+            </TabsContent>
+            
+            <TabsContent value="stock" className="space-y-4 print:block">
               <Card className="p-6">
                 <h3 className="text-lg font-semibold mb-4">Stock Status Distribution</h3>
                 <ResponsiveContainer width="100%" height={400}>
@@ -1024,7 +1158,7 @@ export default function ReportsPage() {
               </Card>
             </TabsContent>
             
-            <TabsContent value="bottles" className="space-y-4">
+            <TabsContent value="bottles" className="space-y-4 print:block">
               <Card className="p-6">
                 <h3 className="text-lg font-semibold mb-4">Bottle Issues by Product</h3>
                 <ResponsiveContainer width="100%" height={400}>
@@ -1042,7 +1176,7 @@ export default function ReportsPage() {
               </Card>
             </TabsContent>
             
-            <TabsContent value="categories" className="space-y-4">
+            <TabsContent value="categories" className="space-y-4 print:block">
               <Card className="p-6">
                 <h3 className="text-lg font-semibold mb-4">Sales by Category</h3>
                 <ResponsiveContainer width="100%" height={400}>
@@ -1067,7 +1201,7 @@ export default function ReportsPage() {
               </Card>
             </TabsContent>
             
-            <TabsContent value="products" className="space-y-4">
+            <TabsContent value="products" className="space-y-4 print:block">
               <Card className="p-6">
                 <h3 className="text-lg font-semibold mb-4">Top Selling Products</h3>
                 <ResponsiveContainer width="100%" height={400}>
@@ -1077,7 +1211,7 @@ export default function ReportsPage() {
                     <YAxis type="category" dataKey="name" width={150} />
                     <RechartsTooltip 
                       formatter={(value: number, name: string) => 
-                        name === "quantity" ? `${value} cases` : formatCurrency(value)
+                        name === "quantity" ? `${value} units` : formatCurrency(value)
                       }
                     />
                     <Legend />
@@ -1088,7 +1222,7 @@ export default function ReportsPage() {
               </Card>
             </TabsContent>
             
-            <TabsContent value="expenses" className="space-y-4">
+            <TabsContent value="expenses" className="space-y-4 print:block">
               <Card className="p-6">
                 <h3 className="text-lg font-semibold mb-4">Expense Breakdown</h3>
                 <ResponsiveContainer width="100%" height={400}>
@@ -1104,7 +1238,7 @@ export default function ReportsPage() {
                       dataKey="amount"
                     >
                       {reportData.charts.expenseBreakdown.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                        <Cell key={`cell-${index}`} fill={entry.color || COLORS[index % COLORS.length]} />
                       ))}
                     </Pie>
                     <RechartsTooltip formatter={(value: number) => formatCurrency(value)} />
@@ -1115,7 +1249,7 @@ export default function ReportsPage() {
           </Tabs>
           
           {/* Data Tables */}
-          <div className="grid gap-6 lg:grid-cols-2">
+          <div className="grid gap-6 lg:grid-cols-2 print:grid-cols-1">
             <Card className="overflow-hidden">
               <div className="p-4 border-b bg-muted/50">
                 <h3 className="font-semibold">Recent Transactions</h3>
@@ -1139,6 +1273,13 @@ export default function ReportsPage() {
                         <TableCell className="text-right font-medium">{formatCurrency(tx.amount)}</TableCell>
                       </TableRow>
                     ))}
+                    {reportData.tables.recentTransactions.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
+                          No transactions found
+                        </TableCell>
+                      </TableRow>
+                    )}
                   </TableBody>
                 </Table>
               </div>
@@ -1146,37 +1287,29 @@ export default function ReportsPage() {
             
             <Card className="overflow-hidden">
               <div className="p-4 border-b bg-muted/50">
-                <h3 className="font-semibold">Bottle Issues & Discrepancies</h3>
+                <h3 className="font-semibold">Top Selling Items</h3>
               </div>
               <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
                       <TableHead>Product</TableHead>
-                      <TableHead className="text-right">Missing</TableHead>
-                      <TableHead className="text-right">Damaged</TableHead>
-                      <TableHead className="text-right">Returned</TableHead>
-                      <TableHead className="text-right">Integrity</TableHead>
+                      <TableHead className="text-right">Units</TableHead>
+                      <TableHead className="text-right">Revenue</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {reportData.tables.bottleIssuesList.map((item, i) => (
+                    {reportData.tables.topSellingItems.map((item, i) => (
                       <TableRow key={i}>
-                        <TableCell className="font-medium">{item.product}</TableCell>
-                        <TableCell className="text-right text-red-600">{item.missing}</TableCell>
-                        <TableCell className="text-right text-yellow-600">{item.damaged}</TableCell>
-                        <TableCell className="text-right text-green-600">{item.returned}</TableCell>
-                        <TableCell className="text-right">
-                          <Badge variant={parseFloat(item.integrity) >= 90 ? "default" : "destructive"}>
-                            {item.integrity}%
-                          </Badge>
-                        </TableCell>
+                        <TableCell className="font-medium">{item.name}</TableCell>
+                        <TableCell className="text-right">{item.quantity}</TableCell>
+                        <TableCell className="text-right font-medium">{formatCurrency(item.revenue)}</TableCell>
                       </TableRow>
                     ))}
-                    {reportData.tables.bottleIssuesList.length === 0 && (
+                    {reportData.tables.topSellingItems.length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
-                          No bottle issues reported
+                        <TableCell colSpan={3} className="text-center py-8 text-muted-foreground">
+                          No sales data found
                         </TableCell>
                       </TableRow>
                     )}
@@ -1251,6 +1384,13 @@ export default function ReportsPage() {
                         </TableCell>
                       </TableRow>
                     ))}
+                    {reportData.tables.expiringProducts.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
+                          No products expiring soon
+                        </TableCell>
+                      </TableRow>
+                    )}
                   </TableBody>
                 </Table>
               </div>
