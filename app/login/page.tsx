@@ -7,41 +7,73 @@ import { toast } from "sonner"
 import { Eye, EyeOff, Loader2 } from "lucide-react"
 import { AuthShell } from "@/components/auth/auth-shell"
 import { useApp } from "@/lib/store"
-import { roleLandingPage, roleLabels } from "@/lib/navigation"
-import type { Role } from "@/lib/types"
+import { roleLandingPage } from "@/lib/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
-
-const demoAccounts: { role: Role; email: string }[] = [
-  { role: "owner", email: "owner@beerdepot.com" },
-  { role: "manager", email: "manager@beerdepot.com" },
-  { role: "cashier", email: "cashier@beerdepot.com" },
-  { role: "storekeeper", email: "store@beerdepot.com" },
-]
+import { usersService } from "@/services"
+import type { Role } from "@/lib/types"
 
 export default function LoginPage() {
   const { login } = useApp()
   const router = useRouter()
-  const [email, setEmail] = useState("owner@beerdepot.com")
-  const [password, setPassword] = useState("password")
+  const [email, setEmail] = useState("")
+  const [password, setPassword] = useState("")
   const [show, setShow] = useState(false)
   const [loading, setLoading] = useState(false)
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    
+    if (!email || !password) {
+      toast.error("Please enter both email and password")
+      return
+    }
+
     setLoading(true)
-    setTimeout(() => {
-      const user = login(email, password)
-      if (user) {
-        toast.success(`Welcome back, ${user.name.split(" ")[0]}`)
-        router.replace(roleLandingPage[user.role])
-      } else {
-        toast.error("Invalid credentials. Try a demo account below.")
-        setLoading(false)
+    
+    try {
+      // Call the login API
+      const response:any = await usersService.login(email, password)
+      
+      console.log("Login response:", response) // For debugging
+
+      // Store the access token
+      if (response.accessToken) {
+        localStorage.setItem('token', response.accessToken)
+        localStorage.setItem('tokenType', response.tokenType || 'bearer')
       }
-    }, 600)
+
+      // Get user data from response
+      const user = response.user || response
+
+      // Store user info in localStorage for persistence
+      localStorage.setItem('user', JSON.stringify(user))
+
+      // Update app state with user
+      // The login function should accept the user object or email/password
+      // Assuming login expects email and password, we pass those
+      login(email, password)
+
+      // Show welcome message
+      toast.success(`Welcome back, ${user.name || 'User'}!`)
+      
+      // Get the role and redirect
+      const userRole = user.role as Role
+      const redirectPath = roleLandingPage[userRole] || '/dashboard'
+      
+      console.log(`Redirecting to: ${redirectPath} for role: ${userRole}`) // For debugging
+      
+      // Redirect to the user's role-based landing page
+      router.push(redirectPath)
+      
+    } catch (error) {
+      console.error('Login error:', error)
+      toast.error(error instanceof Error ? error.message : "Invalid email or password")
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -62,6 +94,7 @@ export default function LoginPage() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
+            disabled={loading}
           />
         </div>
 
@@ -81,12 +114,14 @@ export default function LoginPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
+              disabled={loading}
             />
             <button
               type="button"
               onClick={() => setShow((s) => !s)}
               className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
               aria-label={show ? "Hide password" : "Show password"}
+              disabled={loading}
             >
               {show ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
             </button>
@@ -94,37 +129,25 @@ export default function LoginPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          <Checkbox id="remember" defaultChecked />
+          <Checkbox id="remember" defaultChecked disabled={loading} />
           <Label htmlFor="remember" className="text-sm font-normal text-muted-foreground">
             Keep me signed in
           </Label>
         </div>
 
         <Button type="submit" className="mt-2" disabled={loading}>
-          {loading && <Loader2 className="size-4 animate-spin" />}
+          {loading && <Loader2 className="size-4 animate-spin mr-2" />}
           {loading ? "Signing in..." : "Sign in"}
         </Button>
       </form>
 
-      <div className="mt-8 rounded-xl border border-border bg-muted/40 p-4">
-        <p className="text-xs font-medium text-muted-foreground">Quick demo login (any password)</p>
-        <div className="mt-3 grid grid-cols-2 gap-2">
-          {demoAccounts.map((a) => (
-            <Button
-              key={a.role}
-              type="button"
-              variant="outline"
-              size="sm"
-              className="justify-start text-xs"
-              onClick={() => {
-                setEmail(a.email)
-                setPassword("password")
-              }}
-            >
-              {roleLabels[a.role]}
-            </Button>
-          ))}
-        </div>
+      <div className="mt-6 text-center text-sm text-muted-foreground">
+        <p>
+          Don't have an account?{" "}
+          <Link href="/signup" className="font-medium text-primary hover:underline">
+            Sign up
+          </Link>
+        </p>
       </div>
     </AuthShell>
   )

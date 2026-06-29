@@ -1,8 +1,8 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { toast } from "sonner"
-import { Plus, Truck, Phone, Mail } from "lucide-react"
+import { Plus, Truck, Phone, Mail, RefreshCw } from "lucide-react"
 import { useApp } from "@/lib/store"
 import { formatDate } from "@/lib/format"
 import { DashboardHeader } from "@/components/dashboard/dashboard-header"
@@ -28,18 +28,72 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
+import { suppliersService } from "@/services"
 
 export default function SuppliersPage() {
-  const { suppliers, addSupplier } = useApp()
+  const { suppliers, addSupplier, setSuppliers } = useApp()
+  const [isLoading, setIsLoading] = useState(true)
   const [open, setOpen] = useState(false)
   const [form, setForm] = useState({ name: "", contact: "", phone: "", email: "" })
 
-  function handleAdd(e: React.FormEvent) {
+  // ✅ Fetch suppliers from API on mount
+  useEffect(() => {
+    const fetchSuppliers = async () => {
+      setIsLoading(true)
+      try {
+        const data = await suppliersService.getAll()
+        setSuppliers(data)
+      } catch (error) {
+        console.error('Failed to fetch suppliers:', error)
+        toast.error('Failed to load suppliers')
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    fetchSuppliers()
+  }, [setSuppliers])
+
+  // ✅ Updated to use API
+  const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault()
-    addSupplier({ ...form, productsSupplied: 0 })
-    toast.success(`${form.name} added to suppliers`)
-    setForm({ name: "", contact: "", phone: "", email: "" })
-    setOpen(false)
+    
+    if (!form.name || !form.contact || !form.phone) {
+      toast.error("Please fill in all required fields")
+      return
+    }
+
+    try {
+      const newSupplier = await addSupplier({ 
+        ...form, 
+        productsSupplied: 0 
+      })
+      toast.success(`${form.name} added to suppliers`)
+      setForm({ name: "", contact: "", phone: "", email: "" })
+      setOpen(false)
+      
+      // Refresh the suppliers list
+      const updatedSuppliers = await suppliersService.getAll()
+      setSuppliers(updatedSuppliers)
+    } catch (error) {
+      console.error('Failed to add supplier:', error)
+      toast.error('Failed to add supplier')
+    }
+  }
+
+  // Show loading state
+  if (isLoading) {
+    return (
+      <>
+        <DashboardHeader title="Suppliers" description="Manage supplier records and contacts" />
+        <div className="flex items-center justify-center h-64">
+          <div className="text-center">
+            <RefreshCw className="mx-auto size-8 animate-spin text-muted-foreground" />
+            <p className="mt-2 text-sm text-muted-foreground">Loading suppliers...</p>
+          </div>
+        </div>
+      </>
+    )
   }
 
   return (
@@ -65,7 +119,7 @@ export default function SuppliersPage() {
               </div>
               <div>
                 <p className="text-2xl font-semibold">
-                  {suppliers.reduce((sum, s) => sum + s.productsSupplied, 0)}
+                  {suppliers.reduce((sum, s) => sum + (s.productsSupplied || 0), 0)}
                 </p>
                 <p className="text-sm text-muted-foreground">Products supplied</p>
               </div>
@@ -85,31 +139,34 @@ export default function SuppliersPage() {
                 </DialogHeader>
                 <form onSubmit={handleAdd} className="flex flex-col gap-4">
                   <div className="flex flex-col gap-2">
-                    <Label htmlFor="s-name">Company name</Label>
+                    <Label htmlFor="s-name">Company name *</Label>
                     <Input
                       id="s-name"
                       value={form.name}
                       onChange={(e) => setForm({ ...form, name: e.target.value })}
                       required
+                      placeholder="e.g., Beer Distributors Ltd"
                     />
                   </div>
                   <div className="flex flex-col gap-2">
-                    <Label htmlFor="s-contact">Contact person</Label>
+                    <Label htmlFor="s-contact">Contact person *</Label>
                     <Input
                       id="s-contact"
                       value={form.contact}
                       onChange={(e) => setForm({ ...form, contact: e.target.value })}
                       required
+                      placeholder="e.g., John Doe"
                     />
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="flex flex-col gap-2">
-                      <Label htmlFor="s-phone">Phone</Label>
+                      <Label htmlFor="s-phone">Phone *</Label>
                       <Input
                         id="s-phone"
                         value={form.phone}
                         onChange={(e) => setForm({ ...form, phone: e.target.value })}
                         required
+                        placeholder="+250 788 123 456"
                       />
                     </div>
                     <div className="flex flex-col gap-2">
@@ -119,6 +176,7 @@ export default function SuppliersPage() {
                         type="email"
                         value={form.email}
                         onChange={(e) => setForm({ ...form, email: e.target.value })}
+                        placeholder="supplier@example.com"
                       />
                     </div>
                   </div>
@@ -164,11 +222,28 @@ export default function SuppliersPage() {
                         </span>
                       </TableCell>
                       <TableCell className="text-right">
-                        <Badge variant="secondary">{s.productsSupplied}</Badge>
+                        <Badge variant="secondary">{s.productsSupplied || 0}</Badge>
                       </TableCell>
-                      <TableCell className="text-right text-muted-foreground">{formatDate(s.createdAt)}</TableCell>
+                      <TableCell className="text-right text-muted-foreground">
+                        {s.createdAt ? formatDate(s.createdAt) : "—"}
+                      </TableCell>
                     </TableRow>
                   ))}
+                  {suppliers.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={6} className="py-12 text-center">
+                        <Truck className="mx-auto size-8 text-muted-foreground" />
+                        <p className="mt-2 text-sm text-muted-foreground">No suppliers found</p>
+                        <Button 
+                          variant="link" 
+                          onClick={() => setOpen(true)}
+                          className="mt-2"
+                        >
+                          Add your first supplier
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  )}
                 </TableBody>
               </Table>
             </div>

@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useMemo, useState, useEffect } from "react"
 import Link from "next/link"
 import { toast } from "sonner"
 import { 
@@ -64,6 +64,7 @@ import {
 } from "@/components/ui/tooltip"
 import { Progress } from "@/components/ui/progress"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { productsService } from "@/services"
 
 const BOTTLES_PER_CASE = 24
 
@@ -90,7 +91,8 @@ interface ExtendedProduct extends Product {
 }
 
 export default function InventoryPage() {
-  const { products, addProduct, updateProduct, deleteProduct } = useApp()
+  const { products, addProduct, updateProduct, deleteProduct, setProducts } = useApp()
+  const [isLoading, setIsLoading] = useState(true)
   const [query, setQuery] = useState("")
   const [status, setStatus] = useState<StockStatus | "all">("all")
   const [addOpen, setAddOpen] = useState(false)
@@ -105,6 +107,24 @@ export default function InventoryPage() {
     notes: ""
   })
 
+  // ✅ Fetch products from API on mount
+  useEffect(() => {
+    const fetchProducts = async () => {
+      setIsLoading(true)
+      try {
+        const data = await productsService.getAll()
+        setProducts(data)
+      } catch (error) {
+        console.error('Failed to fetch products:', error)
+        toast.error('Failed to load products')
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    fetchProducts()
+  }, [setProducts])
+
   const filtered = useMemo(() => {
     return products.filter((p) => {
       const matchQuery =
@@ -116,36 +136,52 @@ export default function InventoryPage() {
     })
   }, [products, query, status])
 
-  function handleAdd(values: ProductFormValues) {
-    const extendedProduct: ExtendedProduct = {
-      ...values,
-      id: Date.now().toString(),
-      createdAt: new Date().toISOString(),
-      bottleInfo: {
-        damaged: 0,
-        missing: 0,
-        returned: 0,
-      },
-      partialCases: [],
-      lastStockCheck: new Date(),
+  // ✅ Updated to use API
+  const handleAdd = async (values: ProductFormValues) => {
+    try {
+      const extendedProduct: ExtendedProduct = {
+        ...values,
+        bottleInfo: {
+          damaged: 0,
+          missing: 0,
+          returned: 0,
+        },
+        partialCases: [],
+        lastStockCheck: new Date(),
+      }
+      await addProduct(extendedProduct)
+      setAddOpen(false)
+      toast.success(`${values.name} added to inventory`)
+    } catch (error) {
+      console.error('Failed to add product:', error)
+      toast.error('Failed to add product')
     }
-    addProduct(extendedProduct)
-    setAddOpen(false)
-    toast.success(`${values.name} added to inventory`)
   }
 
-  function handleEdit(values: ProductFormValues) {
+  // ✅ Updated to use API
+  const handleEdit = async (values: ProductFormValues) => {
     if (!editing) return
-    updateProduct(editing.id, values)
-    setEditing(null)
-    toast.success("Product updated")
+    try {
+      await updateProduct(editing.id, values)
+      setEditing(null)
+      toast.success("Product updated")
+    } catch (error) {
+      console.error('Failed to update product:', error)
+      toast.error('Failed to update product')
+    }
   }
 
-  function handleDelete() {
+  // ✅ Updated to use API
+  const handleDelete = async () => {
     if (!deleting) return
-    deleteProduct(deleting.id)
-    toast.success(`${deleting.name} removed`)
-    setDeleting(null)
+    try {
+      await deleteProduct(deleting.id)
+      toast.success(`${deleting.name} removed`)
+      setDeleting(null)
+    } catch (error) {
+      console.error('Failed to delete product:', error)
+      toast.error('Failed to delete product')
+    }
   }
 
   function calculateTotalBottles(product: ExtendedProduct): number {
@@ -190,7 +226,8 @@ export default function InventoryPage() {
     return (product.emptyCases || 0) * (product.depositAmount || 0)
   }
 
-  function handleStockAdjustment(product: ExtendedProduct, adjustments: Partial<BottleInfo>) {
+  // ✅ Updated to use API
+  const handleStockAdjustment = async (product: ExtendedProduct, adjustments: Partial<BottleInfo>) => {
     const updatedProduct = {
       ...product,
       bottleInfo: {
@@ -200,12 +237,19 @@ export default function InventoryPage() {
       lastStockCheck: new Date(),
       updatedAt: new Date().toISOString(),
     }
-    updateProduct(product.id, updatedProduct)
-    setStockAdjustOpen(null)
-    toast.success("Stock levels updated")
+    
+    try {
+      await updateProduct(product.id, updatedProduct)
+      setStockAdjustOpen(null)
+      toast.success("Stock levels updated")
+    } catch (error) {
+      console.error('Failed to update stock:', error)
+      toast.error('Failed to update stock levels')
+    }
   }
 
-  function handleAddPartialCase(product: ExtendedProduct) {
+  // ✅ Updated to use API
+  const handleAddPartialCase = async (product: ExtendedProduct) => {
     if (newPartialCase.bottleCount <= 0 || newPartialCase.bottleCount >= BOTTLES_PER_CASE) {
       toast.error(`Bottle count must be between 1 and ${BOTTLES_PER_CASE - 1}`)
       return
@@ -233,13 +277,19 @@ export default function InventoryPage() {
       updatedAt: new Date().toISOString(),
     }
     
-    updateProduct(product.id, updatedProduct)
-    setPartialCaseOpen(null)
-    setNewPartialCase({ bottleCount: 12, reason: "sold_individual", notes: "" })
-    toast.success(`Opened partial case with ${newPartialCase.bottleCount} bottles`)
+    try {
+      await updateProduct(product.id, updatedProduct)
+      setPartialCaseOpen(null)
+      setNewPartialCase({ bottleCount: 12, reason: "sold_individual", notes: "" })
+      toast.success(`Opened partial case with ${newPartialCase.bottleCount} bottles`)
+    } catch (error) {
+      console.error('Failed to open partial case:', error)
+      toast.error('Failed to open partial case')
+    }
   }
 
-  function handleClosePartialCase(product: ExtendedProduct, partialCaseId: string) {
+  // ✅ Updated to use API
+  const handleClosePartialCase = async (product: ExtendedProduct, partialCaseId: string) => {
     const partialCase = (product.partialCases || []).find(pc => pc.id === partialCaseId)
     if (!partialCase) return
 
@@ -249,8 +299,13 @@ export default function InventoryPage() {
       updatedAt: new Date().toISOString(),
     }
     
-    updateProduct(product.id, updatedProduct)
-    toast.success(`Closed partial case, ${partialCase.bottleCount} bottles returned to inventory`)
+    try {
+      await updateProduct(product.id, updatedProduct)
+      toast.success(`Closed partial case, ${partialCase.bottleCount} bottles returned to inventory`)
+    } catch (error) {
+      console.error('Failed to close partial case:', error)
+      toast.error('Failed to close partial case')
+    }
   }
 
   const getReasonLabel = (reason: string) => {
@@ -672,6 +727,18 @@ export default function InventoryPage() {
           </div>
         </DialogContent>
       </Dialog>
+    )
+  }
+
+  // Show loading state
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <RefreshCw className="mx-auto size-8 animate-spin text-muted-foreground" />
+          <p className="mt-2 text-sm text-muted-foreground">Loading inventory...</p>
+        </div>
+      </div>
     )
   }
 

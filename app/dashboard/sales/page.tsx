@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useMemo, useState, useEffect } from "react"
 import Link from "next/link"
 import { toast } from "sonner"
 import { 
@@ -66,6 +66,7 @@ import {
   Pie,
   Cell,
 } from "recharts"
+import { salesService } from "@/services"
 
 // Types
 interface CartItem {
@@ -76,7 +77,6 @@ interface CartItem {
   subtotal: number
 }
 
-// Extend the Sale type from the store or define it to match
 interface SaleItem {
   productId: string
   product: Product
@@ -233,7 +233,7 @@ function AddToCartForm({
   )
 }
 
-// Customer selection for
+// Customer selection form
 function CustomerSelect({ 
   customers, 
   onSelect, 
@@ -266,7 +266,7 @@ function CustomerSelect({
         totalSpent: 0,
         totalTransactions: 0,
         pendingEmpties: 0,
-        totalPurchases:0,
+        totalPurchases: 0,
         refundableDeposits: 0,
         city: "",
         notes: "",
@@ -441,7 +441,6 @@ function PaymentForm({
 }
 
 // Receipt modal
-// Receipt modal - FIXED with safe property access
 function ReceiptModal({ sale, onClose }: { sale: SaleRecord | null, onClose: () => void }) {
   if (!sale) return null
 
@@ -590,9 +589,11 @@ export default function SalesPage() {
     updateProduct,
     addEmptyCaseTransaction,
     sales = [],
-    addSale
+    addSale,
+    setSales
   } = useApp()
   
+  const [isLoading, setIsLoading] = useState(true)
   const [cart, setCart] = useState<CartItem[]>([])
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
   const [discount, setDiscount] = useState(0)
@@ -605,6 +606,24 @@ export default function SalesPage() {
   const [query, setQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState<"all" | "completed" | "cancelled">("all")
   
+  // ✅ Fetch sales from API on mount
+  useEffect(() => {
+    const fetchSales = async () => {
+      setIsLoading(true)
+      try {
+        const data = await salesService.getAll()
+        setSales(data)
+      } catch (error) {
+        console.error('Failed to fetch sales:', error)
+        toast.error('Failed to load sales')
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    fetchSales()
+  }, [setSales])
+
   // Calculate cart totals
   const subtotal = cart.reduce((sum, item) => sum + item.subtotal, 0)
   const discountAmount = discountType === "percentage" ? (subtotal * discount) / 100 : discount
@@ -666,37 +685,35 @@ export default function SalesPage() {
     })
   }, [typedSales])
   
-// Fix the popularProducts useMemo in SalesPage
-const popularProducts = useMemo(() => {
-  const productSales = new Map<string, { name: string; quantity: number; revenue: number }>()
-  
-  typedSales.forEach(sale => {
-    if (sale.status === "completed" && sale.items) {
-      sale.items.forEach(item => {
-        // Use product name from item if available, otherwise try to find from products array
-        const productName = item.product?.name || 
-                           products.find(p => p.id === item.productId)?.name || 
-                           "Unknown Product"
-        
-        const existing = productSales.get(item.productId)
-        if (existing) {
-          existing.quantity += item.quantity || 0
-          existing.revenue += item.subtotal || 0
-        } else {
-          productSales.set(item.productId, {
-            name: productName,
-            quantity: item.quantity || 0,
-            revenue: item.subtotal || 0,
-          })
-        }
-      })
-    }
-  })
-  
-  return Array.from(productSales.values())
-    .sort((a, b) => b.quantity - a.quantity)
-    .slice(0, 5)
-}, [typedSales, products])
+  const popularProducts = useMemo(() => {
+    const productSales = new Map<string, { name: string; quantity: number; revenue: number }>()
+    
+    typedSales.forEach(sale => {
+      if (sale.status === "completed" && sale.items) {
+        sale.items.forEach(item => {
+          const productName = item.product?.name || 
+                             products.find(p => p.id === item.productId)?.name || 
+                             "Unknown Product"
+          
+          const existing = productSales.get(item.productId)
+          if (existing) {
+            existing.quantity += item.quantity || 0
+            existing.revenue += item.subtotal || 0
+          } else {
+            productSales.set(item.productId, {
+              name: productName,
+              quantity: item.quantity || 0,
+              revenue: item.subtotal || 0,
+            })
+          }
+        })
+      }
+    })
+    
+    return Array.from(productSales.values())
+      .sort((a, b) => b.quantity - a.quantity)
+      .slice(0, 5)
+  }, [typedSales, products])
   
   // Add to cart
   const handleAddToCart = (item: CartItem) => {
@@ -732,8 +749,8 @@ const popularProducts = useMemo(() => {
     ))
   }
   
-  // Complete sale
-  const handleCompleteSale = (paymentData: { method: string, amount: number }) => {
+  // Complete sale - Updated to use API
+  const handleCompleteSale = async (paymentData: { method: string, amount: number }) => {
     if (cart.length === 0) {
       toast.error("Cart is empty")
       return
@@ -748,80 +765,84 @@ const popularProducts = useMemo(() => {
       }
     }
     
-    // Update inventory
-    for (const item of cart) {
-      const product = products.find(p => p.id === item.productId)
-      if (product) {
-        updateProduct(product.id, {
-          ...product,
-          fullCases: product.fullCases - item.quantity,
-        })
-        
-        // Create empty case transaction for deposit tracking
-        addEmptyCaseTransaction({
-          // id: `empty_txn_${Date.now()}_${item.productId}`,
-          productId: product.id,
-          productName: product.name,
-          totalQuantity: item.quantity,
-          depositAmount: product.depositAmount || 3,
-          totalDepositValue: item.quantity * (product.depositAmount || 3),
-          transactionType: "sale",
-          customerId: selectedCustomer?.id,
-          customerName: selectedCustomer?.name || "Walk-in Customer",
-          status: "pending",
-          pendingQuantity: item.quantity,
-          returnedQuantity: 0,
-          refundedAmount: 0,
-          // createdAt: new Date().toISOString(),
-          createdBy: currentUser?.name || "System",
-          notes: "",
-        })
+    try {
+      // Create sale record
+      const invoiceNumber = `INV-${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, '0')}${String(typedSales.length + 1).padStart(6, '0')}`
+      
+      const newSale: SaleRecord = {
+        id: `sale_${Date.now()}`,
+        invoiceNumber,
+        customerId: selectedCustomer?.id,
+        customerName: selectedCustomer?.name || "Walk-in Customer",
+        customerPhone: selectedCustomer?.phone,
+        items: cart.map(item => ({
+          productId: item.productId,
+          product: item.product,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          subtotal: item.subtotal,
+        })),
+        subtotal,
+        tax,
+        discount: discountAmount,
+        total,
+        paymentMethod: paymentData.method,
+        paymentStatus: paymentData.amount >= total ? "paid" : "partial",
+        amountPaid: paymentData.amount,
+        change: paymentData.amount - total,
+        status: "completed",
+        emptyCasesRecorded: true,
+        createdAt: new Date().toISOString(),
+        createdBy: currentUser?.name || "System",
+        notes,
       }
+      
+      // ✅ Use the store's addSale which calls the API
+      await addSale(newSale as any)
+      
+      // Update inventory (this will be handled by the store's addSale)
+      for (const item of cart) {
+        const product = products.find(p => p.id === item.productId)
+        if (product) {
+          // Create empty case transaction for deposit tracking
+          addEmptyCaseTransaction({
+            productId: product.id,
+            productName: product.name,
+            totalQuantity: item.quantity,
+            depositAmount: product.depositAmount || 3,
+            totalDepositValue: item.quantity * (product.depositAmount || 3),
+            transactionType: "sale",
+            customerId: selectedCustomer?.id,
+            customerName: selectedCustomer?.name || "Walk-in Customer",
+            status: "pending",
+            pendingQuantity: item.quantity,
+            returnedQuantity: 0,
+            refundedAmount: 0,
+            createdBy: currentUser?.name || "System",
+            notes: "",
+          })
+        }
+      }
+      
+      // Reset cart and form
+      setCart([])
+      setSelectedCustomer(null)
+      setDiscount(0)
+      setNotes("")
+      setPaymentOpen(false)
+      
+      // Show receipt
+      setReceiptSale(newSale)
+      toast.success(`Sale completed! Invoice: ${invoiceNumber}`)
+      
+      // Refresh sales data
+      const updatedSales = await salesService.getAll()
+      setSales(updatedSales)
+      
+    } catch (error) {
+      console.error('Failed to complete sale:', error)
+      toast.error('Failed to complete sale')
     }
-    
-    // Create sale record
-    const invoiceNumber = `INV-${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, '0')}${String(typedSales.length + 1).padStart(6, '0')}`
-    
-    const newSale: SaleRecord = {
-      id: `sale_${Date.now()}`,
-      invoiceNumber,
-      customerId: selectedCustomer?.id,
-      customerName: selectedCustomer?.name || "Walk-in Customer",
-      customerPhone: selectedCustomer?.phone,
-      items: cart.map(item => ({
-        productId: item.productId,
-        product: item.product,
-        quantity: item.quantity,
-        unitPrice: item.unitPrice,
-        subtotal: item.subtotal,
-      })),
-      subtotal,
-      tax,
-      discount: discountAmount,
-      total,
-      paymentMethod: paymentData.method,
-      paymentStatus: paymentData.amount >= total ? "paid" : "partial",
-      amountPaid: paymentData.amount,
-      change: paymentData.amount - total,
-      status: "completed",
-      emptyCasesRecorded: true,
-      createdAt: new Date().toISOString(),
-      createdBy: currentUser?.name || "System",
-      notes,
-    }
-    
-    addSale(newSale as any)
-    
-    // Reset cart and form
-    setCart([])
-    setSelectedCustomer(null)
-    setDiscount(0)
-    setNotes("")
-    setPaymentOpen(false)
-    
-    // Show receipt
-    setReceiptSale(newSale)
-    toast.success(`Sale completed! Invoice: ${invoiceNumber}`)
   }
   
   // Cancel sale
@@ -833,6 +854,18 @@ const popularProducts = useMemo(() => {
       setNotes("")
       toast.info("Sale cancelled")
     }
+  }
+
+  // Show loading state
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <RefreshCw className="mx-auto size-8 animate-spin text-muted-foreground" />
+          <p className="mt-2 text-sm text-muted-foreground">Loading sales...</p>
+        </div>
+      </div>
+    )
   }
   
   return (

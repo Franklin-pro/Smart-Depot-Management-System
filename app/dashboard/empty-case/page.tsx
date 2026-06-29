@@ -68,8 +68,12 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { emptyCaseTransactionsService } from "@/services"
 
-// Form components (same as before, but with dark mode classes)
+// ============================================
+// FORM COMPONENTS (defined before main component)
+// ============================================
+
 function EmptyCaseTransactionForm({ 
   products, 
   customers, 
@@ -471,6 +475,10 @@ function ProcessReturnForm({
   )
 }
 
+// ============================================
+// MAIN COMPONENT
+// ============================================
+
 export default function EmptyCasesPage() {
   const { 
     currentUser, 
@@ -485,7 +493,11 @@ export default function EmptyCasesPage() {
     addSupplierReturn,
     addDamagedCase,
     checkAndGenerateNotifications,
+    setEmptyCaseTransactions,
   } = useApp()
+
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   // ✅ FIX: Store the function in a ref so it's never a useEffect dependency
   const checkNotificationsRef = useRef(checkAndGenerateNotifications)
@@ -493,10 +505,78 @@ export default function EmptyCasesPage() {
     checkNotificationsRef.current = checkAndGenerateNotifications
   })
 
-  // ✅ Run once on mount only
+  // ✅ Load data from API on mount
   useEffect(() => {
+    const loadTransactions = async () => {
+      setIsLoading(true)
+      setError(null)
+      try {
+        const data = await emptyCaseTransactionsService.getAll()
+        // Update the store with API data
+        setEmptyCaseTransactions(data)
+      } catch (err) {
+        console.error('Failed to load empty case transactions:', err)
+        setError('Failed to load transactions from server')
+        toast.error('Failed to load transactions')
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    loadTransactions()
     checkNotificationsRef.current?.()
-  }, [])
+  }, [setEmptyCaseTransactions]) // ✅ Only depends on setEmptyCaseTransactions
+
+  // ✅ Override addEmptyCaseTransaction to use API
+  const handleAddTransaction = async (data: any) => {
+    setIsLoading(true)
+    try {
+      const newTransaction = await emptyCaseTransactionsService.create({
+        productId: data.productId,
+        customerId: data.customerId,
+        customerName: data.customerName,
+        transactionType: data.transactionType,
+        totalQuantity: data.totalQuantity,
+        depositAmount: data.depositAmount,
+        expectedReturnDate: data.expectedReturnDate,
+        notes: data.notes,
+        createdBy: data.createdBy,
+      })
+      
+      // Update local store
+      addEmptyCaseTransaction(newTransaction)
+      toast.success('Transaction created successfully')
+      return newTransaction
+    } catch (err) {
+      console.error('Failed to create transaction:', err)
+      toast.error('Failed to create transaction')
+      throw err
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  // ✅ Override processReturn to use API
+  const handleProcessReturn = async (transactionId: string, returnQuantity: number) => {
+    setIsLoading(true)
+    try {
+      const updatedTransaction = await emptyCaseTransactionsService.processReturn(transactionId, {
+        returnQuantity,
+        processedBy: currentUser?.name || 'System',
+      })
+      
+      // Update local store
+      processEmptyCaseReturn(transactionId, returnQuantity, currentUser?.name || 'System')
+      toast.success(`Processed ${returnQuantity} case return(s)`)
+      return updatedTransaction
+    } catch (err) {
+      console.error('Failed to process return:', err)
+      toast.error('Failed to process return')
+      throw err
+    } finally {
+      setIsLoading(false)
+    }
+  }
 
   const [query, setQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState<EmptyCaseStatus | "all">("all")
@@ -580,13 +660,16 @@ export default function EmptyCasesPage() {
     return <Badge className={config.className}>{config.label}</Badge>
   }
 
-  // Handle process return
-  const handleProcessReturn = (returnQuantity: number) => {
+  // Handle process return with API
+  const handleProcessReturnClick = async (returnQuantity: number) => {
     if (!selectedTransaction || !currentUser) return
-    processEmptyCaseReturn(selectedTransaction.id, returnQuantity, currentUser.name)
-    setProcessReturnOpen(false)
-    setSelectedTransaction(null)
-    toast.success(`Processed ${returnQuantity} case return`)
+    try {
+      await handleProcessReturn(selectedTransaction.id, returnQuantity)
+      setProcessReturnOpen(false)
+      setSelectedTransaction(null)
+    } catch (error) {
+      // Error already handled in handleProcessReturn
+    }
   }
 
   // Export functionality
@@ -629,6 +712,18 @@ export default function EmptyCasesPage() {
     overdue: "#ef4444",
     completed: "#22c55e",
     partial: "#3b82f6",
+  }
+
+  // Show loading state
+  if (isLoading && emptyCaseTransactions.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <RefreshCw className="mx-auto size-8 animate-spin text-muted-foreground" />
+          <p className="mt-2 text-sm text-muted-foreground">Loading transactions...</p>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -778,10 +873,13 @@ export default function EmptyCasesPage() {
                       products={products}
                       customers={customers}
                       currentUser={currentUser}
-                      onSubmit={(data) => {
-                        addEmptyCaseTransaction(data)
-                        setAddTransactionOpen(false)
-                        toast.success("Transaction created successfully")
+                      onSubmit={async (data) => {
+                        try {
+                          await handleAddTransaction(data)
+                          setAddTransactionOpen(false)
+                        } catch (error) {
+                          // Error already handled in handleAddTransaction
+                        }
                       }}
                       onCancel={() => setAddTransactionOpen(false)}
                     />
@@ -958,6 +1056,7 @@ export default function EmptyCasesPage() {
                                   setProcessReturnOpen(true)
                                 }}
                                 className="bg-green-600 hover:bg-green-700 dark:bg-green-700 dark:hover:bg-green-600"
+                                disabled={isLoading}
                               >
                                 <CheckCircle className="size-4 mr-1" />
                                 Return
@@ -1282,7 +1381,7 @@ export default function EmptyCasesPage() {
           {selectedTransaction && (
             <ProcessReturnForm 
               transaction={selectedTransaction}
-              onSubmit={handleProcessReturn}
+              onSubmit={handleProcessReturnClick}
               onCancel={() => {
                 setProcessReturnOpen(false)
                 setSelectedTransaction(null)

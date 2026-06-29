@@ -18,29 +18,20 @@ import type {
   TransactionAudit,
 } from "./types"
 import {
-  seedUsers,
-  seedSuppliers,
-  seedProducts,
-  seedCustomers,
-  seedSales,
-  seedExpenses,
-  seedActivities,
-  seedNotifications,
-  seedEmptyCaseTransactions,
-  seedSupplierReturns,
-  seedDamagedCases,
-  seedTransactionAudits,
-} from "./mock-data"
-
-type NewSale = {
-  customerId?: string
-  customerName: string
-  items: SaleItem[]
-  discount: number
-  payment: PaymentMethod
-  amountPaid: number
-  cashier: string
-}
+  productsService,
+  customersService,
+  salesService,
+  suppliersService,
+  expensesService,
+  usersService,
+  activitiesService,
+  notificationsService,
+  emptyCaseTransactionsService,
+  supplierReturnsService,
+  damagedCasesService,
+  transactionAuditsService,
+  type NewSale,
+} from "@/services"
 
 type AppState = {
   currentUser: User | null
@@ -60,25 +51,38 @@ type AppState = {
   login: (email: string, password: string) => User | null
   loginAs: (role: User["role"]) => void
   logout: () => void
-  addProduct: (p: Omit<Product, "id" | "createdAt">) => void
-  updateProduct: (id: string, p: Partial<Product>) => void
-  deleteProduct: (id: string) => void
-  addSale: (s: NewSale) => Sale
+  addProduct: (p: Omit<Product, "id" | "createdAt">) => Promise<void>
+  updateProduct: (id: string, p: Partial<Product>) => Promise<void>
+  deleteProduct: (id: string) => Promise<void>
+  addSale: (s: NewSale) => Promise<Sale>
   recordEmptyReturn: (customerId: string, qty: number) => void
-  addExpense: (e: Omit<Expense, "id">) => void
+  addExpense: (e: Omit<Expense, "id">) => Promise<void>
   updateExpense: (id: string, e: Partial<Expense>) => void
   deleteExpense: (id: string) => void
-  addSupplier: (s: Omit<Supplier, "id" | "createdAt">) => void
-  addUser: (u: Omit<User, "id" | "createdAt">) => void
+  addSupplier: (s: Omit<Supplier, "id" | "createdAt">) => Promise<void>
+  addUser: (u: Omit<User, "id" | "createdAt">) => Promise<void>
   updateUser: (id: string, u: Partial<User>) => void
-  markNotificationsRead: () => void
-  addEmptyCaseTransaction: (t: Omit<EmptyCaseTransaction, "id" | "createdAt" | "updatedAt">) => void
+  deleteUser: (id: string) => void;
+  markNotificationsRead: () => Promise<void>
+  addEmptyCaseTransaction: (t: Omit<EmptyCaseTransaction, "id" | "createdAt" | "updatedAt">) => Promise<void>
   updateEmptyCaseTransaction: (id: string, t: Partial<EmptyCaseTransaction>) => void
-  processEmptyCaseReturn: (transactionId: string, returnQuantity: number, processedBy: string) => void
-  addSupplierReturn: (s: Omit<SupplierReturn, "id">) => void
-  addDamagedCase: (d: Omit<DamagedCase, "id">) => void
-  addTransactionAudit: (a: Omit<TransactionAudit, "id" | "performedAt">) => void
+  processEmptyCaseReturn: (transactionId: string, returnQuantity: number, processedBy: string) => Promise<void>
+  addSupplierReturn: (s: Omit<SupplierReturn, "id">) => Promise<void>
+  addDamagedCase: (d: Omit<DamagedCase, "id">) => Promise<void>
+  addTransactionAudit: (a: Omit<TransactionAudit, "id" | "performedAt">) => Promise<void>
   checkAndGenerateNotifications: () => void
+  // ✅ Expose setter functions for data refresh
+  setEmptyCaseTransactions: (data: EmptyCaseTransaction[] | ((prev: EmptyCaseTransaction[]) => EmptyCaseTransaction[])) => void
+  setProducts: (data: Product[] | ((prev: Product[]) => Product[])) => void
+  setCustomers: (data: Customer[] | ((prev: Customer[]) => Customer[])) => void
+  setSupplierReturns: (data: SupplierReturn[] | ((prev: SupplierReturn[]) => SupplierReturn[])) => void
+  setDamagedCases: (data: DamagedCase[] | ((prev: DamagedCase[]) => DamagedCase[])) => void
+  setTransactionAudits: (data: TransactionAudit[] | ((prev: TransactionAudit[]) => TransactionAudit[])) => void
+  // ✅ ADD THESE - Missing setters
+  setSales: (data: Sale[] | ((prev: Sale[]) => Sale[])) => void
+  setSuppliers: (data: Supplier[] | ((prev: Supplier[]) => Supplier[])) => void
+  setExpenses: (data: Expense[] | ((prev: Expense[]) => Expense[])) => void
+  setUsers: (data: User[] | ((prev: User[]) => User[])) => void
 }
 
 const AppContext = createContext<AppState | null>(null)
@@ -89,18 +93,18 @@ const uid = () => Math.random().toString(36).slice(2, 10)
 export function AppProvider({ children }: { children: ReactNode }) {
   const [currentUser, setCurrentUser] = useState<User | null>(null)
   const [ready, setReady] = useState(false)
-  const [products, setProducts] = useState<Product[]>(seedProducts)
-  const [suppliers, setSuppliers] = useState<Supplier[]>(seedSuppliers)
-  const [customers, setCustomers] = useState<Customer[]>(seedCustomers)
-  const [sales, setSales] = useState<Sale[]>(seedSales)
-  const [expenses, setExpenses] = useState<Expense[]>(seedExpenses)
-  const [users, setUsers] = useState<User[]>(seedUsers)
-  const [activities, setActivities] = useState<Activity[]>(seedActivities)
-  const [notifications, setNotifications] = useState<AppNotification[]>(seedNotifications)
-  const [emptyCaseTransactions, setEmptyCaseTransactions] = useState<EmptyCaseTransaction[]>(seedEmptyCaseTransactions)
-  const [supplierReturns, setSupplierReturns] = useState<SupplierReturn[]>(seedSupplierReturns)
-  const [damagedCases, setDamagedCases] = useState<DamagedCase[]>(seedDamagedCases)
-  const [transactionAudits, setTransactionAudits] = useState<TransactionAudit[]>(seedTransactionAudits)
+  const [products, setProducts] = useState<Product[]>([])
+  const [suppliers, setSuppliers] = useState<Supplier[]>([])
+  const [customers, setCustomers] = useState<Customer[]>([])
+  const [sales, setSales] = useState<Sale[]>([])
+  const [expenses, setExpenses] = useState<Expense[]>([])
+  const [users, setUsers] = useState<User[]>([])
+  const [activities, setActivities] = useState<Activity[]>([])
+  const [notifications, setNotifications] = useState<AppNotification[]>([])
+  const [emptyCaseTransactions, setEmptyCaseTransactions] = useState<EmptyCaseTransaction[]>([])
+  const [supplierReturns, setSupplierReturns] = useState<SupplierReturn[]>([])
+  const [damagedCases, setDamagedCases] = useState<DamagedCase[]>([])
+  const [transactionAudits, setTransactionAudits] = useState<TransactionAudit[]>([])
 
   useEffect(() => {
     try {
@@ -108,6 +112,43 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (raw) setCurrentUser(JSON.parse(raw))
     } catch {}
     setReady(true)
+  }, [])
+
+  // Fetch initial data from API
+  useEffect(() => {
+    async function fetchData() {
+      try {
+        const [productsData, customersData, salesData, suppliersData, expensesData, usersData, activitiesData, notificationsData, emptyCaseData, supplierReturnsData, damagedCasesData, auditsData] = await Promise.all([
+          productsService.getAll(),
+          customersService.getAll(),
+          salesService.getAll(),
+          suppliersService.getAll(),
+          expensesService.getAll(),
+          usersService.getAll(),
+          activitiesService.getAll(),
+          notificationsService.getAll(),
+          emptyCaseTransactionsService.getAll(),
+          supplierReturnsService.getAll(),
+          damagedCasesService.getAll(),
+          transactionAuditsService.getAll(),
+        ])
+        setProducts(productsData)
+        setCustomers(customersData)
+        setSales(salesData)
+        setSuppliers(suppliersData)
+        setExpenses(expensesData)
+        setUsers(usersData)
+        setActivities(activitiesData)
+        setNotifications(notificationsData)
+        setEmptyCaseTransactions(emptyCaseData)
+        setSupplierReturns(supplierReturnsData)
+        setDamagedCases(damagedCasesData)
+        setTransactionAudits(auditsData)
+      } catch (error) {
+        console.error('Failed to fetch initial data:', error)
+      }
+    }
+    fetchData()
   }, [])
 
   function persistUser(u: User | null) {
@@ -134,10 +175,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
       users,
       activities,
       notifications,
+
       emptyCaseTransactions,
       supplierReturns,
       damagedCases,
       transactionAudits,
+      // ✅ Expose setter functions
+      setEmptyCaseTransactions,
+      setProducts,
+      setCustomers,
+      setSupplierReturns,
+      setDamagedCases,
+      setTransactionAudits,
+      // ✅ ADD THESE - Missing setters
+      setSales,
+      setSuppliers,
+      setExpenses,
+      setUsers,
       login(email) {
         const found = users.find((u) => u.email.toLowerCase() === email.toLowerCase() && u.status === "active")
         if (found) persistUser(found)
@@ -150,98 +204,36 @@ export function AppProvider({ children }: { children: ReactNode }) {
       logout() {
         persistUser(null)
       },
-      addProduct(p) {
-        const product: Product = { ...p, id: uid(), createdAt: new Date().toISOString() }
+      async addProduct(p) {
+        const product = await productsService.create(p)
         setProducts((prev) => [product, ...prev])
         pushActivity("stock", `${product.fullCases} cases of ${product.name} added to inventory`)
       },
-      updateProduct(id, patch) {
-        setProducts((prev) => prev.map((p) => (p.id === id ? { ...p, ...patch } : p)))
+      async updateProduct(id, patch) {
+        const updated = await productsService.update(id, patch)
+        setProducts((prev) => prev.map((p) => (p.id === id ? updated : p)))
       },
-      deleteProduct(id) {
+      async deleteProduct(id) {
+        await productsService.delete(id)
         setProducts((prev) => prev.filter((p) => p.id !== id))
       },
-      addSale(s) {
-        const subtotal = s.items.reduce((sum, i) => sum + i.quantity * i.unitPrice, 0)
-        const total = subtotal - s.discount
-        const expectedEmpties = s.items.reduce((sum, i) => sum + i.quantity, 0)
-        const sale: Sale = {
-          id: uid(),
-          receiptNo: `RCP-${1000 + sales.length + 1}`,
-          customerId: s.customerId,
-          customerName: s.customerName,
-          items: s.items,
-          paymentMethod: s.payment,
-          invoiceNumber: `INV-${1000 + sales.length + 1}`,
-          status: "completed",
-          subtotal,
-          discount: s.discount,
-          total,
-          payment: s.payment,
-          amountPaid: s.amountPaid,
-          change: Math.max(0, s.amountPaid - total),
-          cashier: s.cashier,
-          expectedEmpties,
-          returnedEmpties: 0,
-          createdAt: new Date().toISOString(),
-        }
+      async addSale(s) {
+        const sale = await salesService.create(s)
         setSales((prev) => [sale, ...prev])
-        // reduce inventory and add empties expected
-        setProducts((prev) =>
-          prev.map((p) => {
-            const item = s.items.find((i) => i.productId === p.id)
-            if (!item) return p
-            return { ...p, fullCases: Math.max(0, p.fullCases - item.quantity) }
-          }),
-        )
-        // update customer pending empties + purchases
-        let totalDepositValue = 0
-        if (s.customerId) {
-          s.items.forEach((item) => {
-            const product = products.find((p) => p.id === item.productId)
-            if (product) {
-              totalDepositValue += item.quantity * product.depositAmount
-            }
-          })
-          setCustomers((prev) =>
-            prev.map((c) =>
-              c.id === s.customerId
-                ? { 
-                    ...c, 
-                    pendingEmpties: c.pendingEmpties + expectedEmpties, 
-                    totalPurchases: c.totalPurchases + total,
-                    refundableDeposits: c.refundableDeposits + totalDepositValue,
-                  }
-                : c,
-            ),
-          )
-        }
-        // Create empty case transactions for each product
-        s.items.forEach((item) => {
-          const product = products.find((p) => p.id === item.productId)
-          if (product) {
-            const transaction: EmptyCaseTransaction = {
-              id: uid(),
-              productId: item.productId,
-              customerId: s.customerId,
-              customerName: s.customerName,
-              productName: product.name,
-              transactionType: "sale",
-              totalQuantity: item.quantity,
-              returnedQuantity: 0,
-              pendingQuantity: item.quantity,
-              depositAmount: product.depositAmount,
-              totalDepositValue: item.quantity * product.depositAmount,
-              refundedAmount: 0,
-              expectedReturnDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 days from now
-              status: "pending",
-              createdBy: s.cashier,
-              createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString(),
-            }
-            setEmptyCaseTransactions((prev) => [transaction, ...prev])
-          }
-        })
+        
+        // Refresh products and customers to get updated data from API
+        const [updatedProducts, updatedCustomers] = await Promise.all([
+          productsService.getAll(),
+          customersService.getAll(),
+        ])
+        setProducts(updatedProducts)
+        setCustomers(updatedCustomers)
+        
+        // Refresh empty case transactions
+        const updatedTransactions = await emptyCaseTransactionsService.getAll()
+        setEmptyCaseTransactions(updatedTransactions)
+        
+        const expectedEmpties = s.items.reduce((sum: number, i: SaleItem) => sum + i.quantity, 0)
         pushActivity("sale", `${s.cashier} sold ${expectedEmpties} cases to ${s.customerName}`)
         return sale
       },
@@ -252,8 +244,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const cust = customers.find((c) => c.id === customerId)
         pushActivity("empty", `${cust?.name ?? "Customer"} returned ${qty} empty cases`)
       },
-      addExpense(e) {
-        const expense: Expense = { ...e, id: uid() }
+      async addExpense(e) {
+        const expense = await expensesService.create(e)
         setExpenses((prev) => [expense, ...prev])
         pushActivity("expense", `${e.recordedBy} recorded expense ${e.title}`)
       },
@@ -263,138 +255,95 @@ export function AppProvider({ children }: { children: ReactNode }) {
       deleteExpense(id) {
         setExpenses((prev) => prev.filter((e) => e.id !== id))
       },
-      addSupplier(s) {
-        setSuppliers((prev) => [{ ...s, id: uid(), createdAt: new Date().toISOString() }, ...prev])
+      async addSupplier(s) {
+        const supplier = await suppliersService.create(s)
+        setSuppliers((prev) => [supplier, ...prev])
+        pushActivity("supplier", `New supplier ${s.name} added`)
       },
-      addUser(u) {
-        setUsers((prev) => [{ ...u, id: uid(), createdAt: new Date().toISOString() }, ...prev])
+      async addUser(u) {
+        const user = await usersService.create(u)
+        setUsers((prev) => [user, ...prev])
         pushActivity("user", `New ${u.role} ${u.name} added`)
       },
       updateUser(id, patch) {
         setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, ...patch } : u)))
       },
-      markNotificationsRead() {
+      deleteUser(id) {
+        setUsers((prev) => prev.filter((u) => u.id !== id))
+      },
+      async markNotificationsRead() {
+        await notificationsService.markRead()
         setNotifications((prev) => prev.map((n) => ({ ...n, read: true })))
       },
-      addEmptyCaseTransaction(t) {
-        const transaction: EmptyCaseTransaction = {
-          ...t,
-          id: uid(),
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        }
+      async addEmptyCaseTransaction(t) {
+        const transaction = await emptyCaseTransactionsService.create(t)
         setEmptyCaseTransactions((prev) => [transaction, ...prev])
         pushActivity("empty", `Empty case transaction created for ${t.customerName || "Unknown"}`)
         
         // Add audit log
-        const audit: TransactionAudit = {
-          id: uid(),
+        const audit = await transactionAuditsService.create({
           transactionId: transaction.id,
           transactionType: "empty_case",
           action: "created",
           newState: { status: transaction.status },
           performedBy: t.createdBy,
-          performedAt: new Date().toISOString(),
           notes: "Initial transaction created",
-        }
+        })
         setTransactionAudits((prev) => [audit, ...prev])
       },
       updateEmptyCaseTransaction(id, patch) {
         setEmptyCaseTransactions((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch, updatedAt: new Date().toISOString() } : t)))
       },
-      processEmptyCaseReturn(transactionId, returnQuantity, processedBy) {
-        const transaction = emptyCaseTransactions.find((t) => t.id === transactionId)
-        if (!transaction) return
-
-        const newReturnedQuantity = transaction.returnedQuantity + returnQuantity
-        const newPendingQuantity = transaction.pendingQuantity - returnQuantity
-        const newRefundedAmount = transaction.refundedAmount + (returnQuantity * transaction.depositAmount)
+      async processEmptyCaseReturn(transactionId, returnQuantity, processedBy) {
+        const transaction = await emptyCaseTransactionsService.processReturn(transactionId, { returnQuantity, processedBy })
+        setEmptyCaseTransactions((prev) => prev.map((t) => t.id === transactionId ? transaction : t))
         
-        const newStatus = newPendingQuantity === 0 ? "completed" : "partial"
+        // Refresh customers to get updated data
+        const updatedCustomers = await customersService.getAll()
+        setCustomers(updatedCustomers)
         
-        setEmptyCaseTransactions((prev) => prev.map((t) => 
-          t.id === transactionId 
-            ? {
-                ...t,
-                returnedQuantity: newReturnedQuantity,
-                pendingQuantity: newPendingQuantity,
-                refundedAmount: newRefundedAmount,
-                status: newStatus,
-                actualReturnDate: newPendingQuantity === 0 ? new Date().toISOString() : t.actualReturnDate,
-                updatedAt: new Date().toISOString(),
-              }
-            : t
-        ))
-
-        // Update customer balance
-        if (transaction.customerId) {
-          setCustomers((prev) => prev.map((c) => 
-            c.id === transaction.customerId 
-              ? {
-                  ...c,
-                  pendingEmpties: Math.max(0, c.pendingEmpties - returnQuantity),
-                  refundableDeposits: Math.max(0, c.refundableDeposits - (returnQuantity * transaction.depositAmount)),
-                }
-              : c
-          ))
-        }
-
-        // Add audit log
-        const audit: TransactionAudit = {
-          id: uid(),
-          transactionId,
-          transactionType: "empty_case",
-          action: "updated",
-          previousState: { status: transaction.status, returnedQuantity: transaction.returnedQuantity },
-          newState: { status: newStatus, returnedQuantity: newReturnedQuantity },
-          performedBy: processedBy,
-          performedAt: new Date().toISOString(),
-          notes: `Processed return of ${returnQuantity} cases`,
-        }
-        setTransactionAudits((prev) => [audit, ...prev])
-
+        // Refresh audits
+        const updatedAudits = await transactionAuditsService.getAll()
+        setTransactionAudits(updatedAudits)
+        
         pushActivity("empty", `${processedBy} processed ${returnQuantity} empty case return from ${transaction.customerName || "Unknown"}`)
       },
-      addSupplierReturn(s) {
-        const supplierReturn: SupplierReturn = { ...s, id: uid() }
+      async addSupplierReturn(s) {
+        const supplierReturn = await supplierReturnsService.create(s)
         setSupplierReturns((prev) => [supplierReturn, ...prev])
         
         // Add audit log
-        const audit: TransactionAudit = {
-          id: uid(),
+        const audit = await transactionAuditsService.create({
           transactionId: supplierReturn.id,
           transactionType: "supplier_return",
           action: "created",
           newState: { quantity: supplierReturn.quantity },
           performedBy: supplierReturn.receivedBy,
-          performedAt: new Date().toISOString(),
           notes: "Supplier return recorded",
-        }
+        })
         setTransactionAudits((prev) => [audit, ...prev])
 
         pushActivity("empty", `${supplierReturn.receivedBy} returned ${supplierReturn.quantity} cases to ${supplierReturn.supplierName}`)
       },
-      addDamagedCase(d) {
-        const damagedCase: DamagedCase = { ...d, id: uid() }
+      async addDamagedCase(d) {
+        const damagedCase = await damagedCasesService.create(d)
         setDamagedCases((prev) => [damagedCase, ...prev])
         
         // Add audit log
-        const audit: TransactionAudit = {
-          id: uid(),
+        const audit = await transactionAuditsService.create({
           transactionId: damagedCase.id,
           transactionType: "damage_report",
           action: "created",
           newState: { quantity: damagedCase.quantity, damageCost: damagedCase.damageCost },
           performedBy: damagedCase.reportedBy,
-          performedAt: new Date().toISOString(),
           notes: "Damaged case reported",
-        }
+        })
         setTransactionAudits((prev) => [audit, ...prev])
 
         pushActivity("empty", `${damagedCase.reportedBy} reported ${damagedCase.quantity} damaged cases of ${damagedCase.productName}`)
       },
-      addTransactionAudit(a) {
-        const audit: TransactionAudit = { ...a, id: uid(), performedAt: new Date().toISOString() }
+      async addTransactionAudit(a) {
+        const audit = await transactionAuditsService.create(a)
         setTransactionAudits((prev) => [audit, ...prev])
       },
       checkAndGenerateNotifications() {
@@ -462,7 +411,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
       },
     }
-  }, [currentUser, ready, products, suppliers, customers, sales, expenses, users, activities, notifications, emptyCaseTransactions, transactionAudits, damagedCases])
+  }, [currentUser, ready, products, suppliers, customers, sales, expenses, users, activities, notifications, emptyCaseTransactions, transactionAudits, damagedCases, supplierReturns])
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>
 }

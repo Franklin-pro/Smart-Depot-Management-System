@@ -1,4 +1,4 @@
-export type Role = "owner" | "manager" | "cashier" | "storekeeper"
+export type Role = "owner" | "manager" | "cashier" | "storekeeper" | "staff" | "admin"
 
 export type User = {
   id: string
@@ -138,7 +138,7 @@ export type Expense = {
 
 export type Activity = {
   id: string
-  type: "sale" | "stock" | "expense" | "empty" | "expiry" | "user"
+  type: "sale" | "stock" | "expense" | "empty" | "expiry" | "user" | "supplier"
   message: string
   createdAt: string
 }

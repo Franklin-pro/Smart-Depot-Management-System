@@ -12,6 +12,7 @@ import {
   Beer,
   X,
   CheckCircle,
+  RefreshCw,
 } from "lucide-react"
 import { useApp } from "@/lib/store"
 import { formatCurrency, getStockStatus, daysUntil } from "@/lib/format"
@@ -31,6 +32,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { salesService } from "@/services"
 
 type CartLine = SaleItem & { max: number }
 
@@ -42,7 +44,8 @@ const payments: { value: PaymentMethod; label: string }[] = [
 ]
 
 export default function PosPage() {
-  const { products, customers, currentUser, addSale } = useApp()
+  const { products, customers, currentUser, addSale, setSales, sales } = useApp()
+  const [isLoading, setIsLoading] = useState(true)
   const [query, setQuery] = useState("")
   const [cart, setCart] = useState<CartLine[]>([])
   const [customerId, setCustomerId] = useState<string>("walk-in")
@@ -52,6 +55,24 @@ export default function PosPage() {
   const [completed, setCompleted] = useState<Sale | null>(null)
   const [mounted, setMounted] = useState(false)
   const receiptRef = useRef<HTMLDivElement>(null)
+
+  // ✅ Fetch sales from API on mount
+  useEffect(() => {
+    const fetchSales = async () => {
+      setIsLoading(true)
+      try {
+        const data = await salesService.getAll()
+        setSales(data)
+      } catch (error) {
+        console.error('Failed to fetch sales:', error)
+        toast.error('Failed to load sales')
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    fetchSales()
+  }, [setSales])
 
   useEffect(() => {
     setMounted(true)
@@ -131,7 +152,8 @@ export default function PosPage() {
     setCustomerId("walk-in")
   }
 
-  function checkout() {
+  // ✅ Updated checkout to use API
+  async function checkout() {
     if (cart.length === 0) {
       toast.error("Cart is empty")
       return
@@ -140,25 +162,51 @@ export default function PosPage() {
       toast.error("Amount paid is less than total")
       return
     }
-    const customer = customers.find((c) => c.id === customerId)
-    const sale = addSale({
-      customerId: customer?.id,
-      customerName: customer?.name ?? "Walk-in Customer",
-      items: cart.map(({ productId, name, quantity, unitPrice, subtotal }) => ({
-        productId,
-        name,
-        quantity,
-        unitPrice,
-        subtotal,
-      })),
-      discount,
-      payment,
-      amountPaid,
-      cashier: currentUser?.name ?? "Cashier",
-    })
-    setCompleted(sale)
-    resetSale()
-    toast.success("Sale completed")
+
+    try {
+      const customer = customers.find((c) => c.id === customerId)
+      const saleData = {
+        customerId: customer?.id,
+        customerName: customer?.name ?? "Walk-in Customer",
+        items: cart.map(({ productId, name, quantity, unitPrice, subtotal }) => ({
+          productId,
+          name,
+          quantity,
+          unitPrice,
+          subtotal,
+        })),
+        discount,
+        payment,
+        amountPaid,
+        cashier: currentUser?.name ?? "Cashier",
+      }
+
+      // ✅ Use the store's addSale which calls the API
+      const sale = await addSale(saleData)
+      setCompleted(sale)
+      resetSale()
+      toast.success("Sale completed")
+
+      // Refresh sales data
+      const updatedSales = await salesService.getAll()
+      setSales(updatedSales)
+
+    } catch (error) {
+      console.error('Failed to complete sale:', error)
+      toast.error('Failed to complete sale')
+    }
+  }
+
+  // Show loading state
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <RefreshCw className="mx-auto size-8 animate-spin text-muted-foreground" />
+          <p className="mt-2 text-sm text-muted-foreground">Loading sales data...</p>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -225,7 +273,7 @@ export default function PosPage() {
           </div>
         </div>
 
-        {/* Current Order (Cart) - FIXED SCROLL DESIGN */}
+        {/* Current Order (Cart) */}
         <Card className="flex h-fit max-h-[calc(100vh-7rem)] flex-col overflow-hidden lg:sticky lg:top-20">
           {/* Header - fixed */}
           <div className="flex items-center justify-between border-b border-border px-4 py-3 shrink-0">
@@ -248,7 +296,7 @@ export default function PosPage() {
             )}
           </div>
 
-          {/* Scrollable items area - this scrolls independently */}
+          {/* Scrollable items area */}
           <div className="flex-1 overflow-y-auto min-h-0">
             <div className="divide-y divide-border">
               {/* Empty state */}

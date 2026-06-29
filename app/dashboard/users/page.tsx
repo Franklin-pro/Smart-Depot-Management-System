@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState, useRef } from "react"
+import { useMemo, useState, useEffect, useRef } from "react"
 import { toast } from "sonner"
 import { 
   Users, Plus, Search, Edit2, Trash2, Eye, 
@@ -60,6 +60,7 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/ui/tabs"
+import { usersService } from "@/services"
 
 // Types
 type UserRole = "owner" | "manager" | "cashier" | "storekeeper" | "admin"
@@ -899,7 +900,8 @@ function EmployeeDetailsModal({ employee, onClose }: { employee: Employee | null
 }
 
 export default function UsersPage() {
-  const { currentUser } = useApp()
+  const { currentUser, users, addUser, updateUser, deleteUser, setUsers } = useApp()
+  const [isLoading, setIsLoading] = useState(true)
   const [employees, setEmployees] = useState<Employee[]>([])
   const [query, setQuery] = useState("")
   const [roleFilter, setRoleFilter] = useState<UserRole | "all">("all")
@@ -909,6 +911,57 @@ export default function UsersPage() {
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null)
   const [deletingEmployee, setDeletingEmployee] = useState<Employee | null>(null)
   const [viewingEmployee, setViewingEmployee] = useState<Employee | null>(null)
+
+  // ✅ Fetch users from API on mount
+  useEffect(() => {
+    const fetchUsers = async () => {
+      setIsLoading(true)
+      try {
+        const data = await usersService.getAll()
+        // Convert User[] to Employee[] format
+        const employeesData: Employee[] = data.map((u: any) => ({
+          id: u.id,
+          employeeId: u.employeeId || `EMP-${String(employees.length + 1).padStart(4, '0')}`,
+          userId: u.id,
+          firstName: u.name?.split(' ')[0] || '',
+          lastName: u.name?.split(' ').slice(1).join(' ') || '',
+          email: u.email || '',
+          phone: u.phone || '',
+          address: u.address || '',
+          city: u.city || '',
+          country: u.country || 'Rwanda',
+          role: u.role || 'cashier',
+          department: u.department || 'sales',
+          position: u.position || '',
+          employmentStatus: u.status || 'active',
+          startDate: u.startDate || new Date().toISOString(),
+          salary: u.salary || 0,
+          salaryType: u.salaryType || 'monthly',
+          bankName: u.bankName || '',
+          bankAccount: u.bankAccount || '',
+          emergencyContact: u.emergencyContact || '',
+          emergencyPhone: u.emergencyPhone || '',
+          dateOfBirth: u.dateOfBirth || '',
+          idNumber: u.idNumber || '',
+          taxId: u.taxId || '',
+          notes: u.notes || '',
+          contracts: u.contracts || [],
+          createdAt: u.createdAt || new Date().toISOString(),
+          updatedAt: u.updatedAt || new Date().toISOString(),
+          createdBy: u.createdBy || 'System',
+        }))
+        setEmployees(employeesData)
+        setUsers(data)
+      } catch (error) {
+        console.error('Failed to fetch users:', error)
+        toast.error('Failed to load users')
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    fetchUsers()
+  }, [setUsers])
 
   // Filter employees
   const filteredEmployees = useMemo(() => {
@@ -961,49 +1014,153 @@ export default function UsersPage() {
     }
   }, [employees])
 
-  // Add employee
-  const handleAddEmployee = (data: any) => {
-    const newEmployee: Employee = {
-      id: `emp_${Date.now()}`,
-      employeeId: `EMP-${new Date().getFullYear()}${String(employees.length + 1).padStart(4, '0')}`,
-      userId: `user_${Date.now()}`,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      createdBy: currentUser?.name || "System",
-      ...data,
+  // ✅ Updated to use API - FIXED with proper type handling
+  const handleAddEmployee = async (data: any) => {
+    try {
+      const userData = {
+        name: `${data.firstName} ${data.lastName}`,
+        email: data.email,
+        phone: data.phone,
+        address: data.address,
+        city: data.city,
+        country: data.country,
+        role: data.role,
+        department: data.department,
+        position: data.position,
+        status: data.employmentStatus,
+        startDate: data.startDate,
+        salary: data.salary,
+        salaryType: data.salaryType,
+        bankName: data.bankName,
+        bankAccount: data.bankAccount,
+        emergencyContact: data.emergencyContact,
+        emergencyPhone: data.emergencyPhone,
+        dateOfBirth: data.dateOfBirth,
+        idNumber: data.idNumber,
+        taxId: data.taxId,
+        notes: data.notes,
+        contracts: data.contracts || [],
+        createdBy: currentUser?.name || "System",
+      }
+
+      const newUser:any = await addUser(userData)
+      
+      // Check if newUser exists and has an id
+      if (!newUser || !newUser.id) {
+        throw new Error('Failed to create user: No ID returned')
+      }
+      
+      const newEmployee: Employee = {
+        id: newUser.id,
+        employeeId: `EMP-${new Date().getFullYear()}${String(employees.length + 1).padStart(4, '0')}`,
+        userId: newUser.id,
+        firstName: data.firstName,
+        lastName: data.lastName,
+        email: data.email,
+        phone: data.phone,
+        address: data.address,
+        city: data.city,
+        country: data.country,
+        role: data.role,
+        department: data.department,
+        position: data.position,
+        employmentStatus: data.employmentStatus,
+        startDate: data.startDate,
+        salary: data.salary,
+        salaryType: data.salaryType,
+        bankName: data.bankName,
+        bankAccount: data.bankAccount,
+        emergencyContact: data.emergencyContact,
+        emergencyPhone: data.emergencyPhone,
+        dateOfBirth: data.dateOfBirth,
+        idNumber: data.idNumber,
+        taxId: data.taxId,
+        notes: data.notes,
+        contracts: data.contracts || [],
+        createdAt: newUser.createdAt || new Date().toISOString(),
+        updatedAt: newUser.updatedAt || new Date().toISOString(),
+        createdBy: currentUser?.name || "System",
+      }
+      
+      setEmployees([newEmployee, ...employees])
+      setAddOpen(false)
+      toast.success(`Employee ${newEmployee.firstName} ${newEmployee.lastName} added`)
+    } catch (error) {
+      console.error('Failed to add employee:', error)
+      toast.error('Failed to add employee')
     }
-    
-    setEmployees([newEmployee, ...employees])
-    setAddOpen(false)
-    toast.success(`Employee ${newEmployee.firstName} ${newEmployee.lastName} added`)
   }
 
-  // Update employee
-  const handleUpdateEmployee = (data: any) => {
+  // ✅ Updated to use API - FIXED with proper type handling
+  const handleUpdateEmployee = async (data: any) => {
     if (!editingEmployee) return
     
-    const updatedEmployee: Employee = {
-      ...editingEmployee,
-      ...data,
-      updatedAt: new Date().toISOString(),
+    try {
+      const updatedData = {
+        name: `${data.firstName} ${data.lastName}`,
+        email: data.email,
+        phone: data.phone,
+        address: data.address,
+        city: data.city,
+        country: data.country,
+        role: data.role,
+        department: data.department,
+        position: data.position,
+        status: data.employmentStatus,
+        startDate: data.startDate,
+        salary: data.salary,
+        salaryType: data.salaryType,
+        bankName: data.bankName,
+        bankAccount: data.bankAccount,
+        emergencyContact: data.emergencyContact,
+        emergencyPhone: data.emergencyPhone,
+        dateOfBirth: data.dateOfBirth,
+        idNumber: data.idNumber,
+        taxId: data.taxId,
+        notes: data.notes,
+        contracts: data.contracts || [],
+        updatedBy: currentUser?.name || "System",
+      }
+
+      const updatedUser:any = await updateUser(editingEmployee.userId, updatedData)
+      
+      const updatedEmployee: Employee = {
+        ...editingEmployee,
+        ...data,
+        updatedAt: updatedUser?.updatedAt || new Date().toISOString(),
+      }
+      
+      setEmployees(employees.map(e => e.id === editingEmployee.id ? updatedEmployee : e))
+      setEditingEmployee(null)
+      toast.success("Employee updated")
+    } catch (error) {
+      console.error('Failed to update employee:', error)
+      toast.error('Failed to update employee')
     }
-    
-    setEmployees(employees.map(e => e.id === editingEmployee.id ? updatedEmployee : e))
-    setEditingEmployee(null)
-    toast.success("Employee updated")
   }
 
-  // Delete employee
-  const handleDeleteEmployee = () => {
+  // ✅ Updated to use API
+  const handleDeleteEmployee = async () => {
     if (!deletingEmployee) return
     
-    setEmployees(employees.filter(e => e.id !== deletingEmployee.id))
-    setDeletingEmployee(null)
-    toast.success("Employee removed")
+    try {
+      await deleteUser(deletingEmployee.userId)
+      setEmployees(employees.filter(e => e.id !== deletingEmployee.id))
+      setDeletingEmployee(null)
+      toast.success("Employee removed")
+    } catch (error) {
+      console.error('Failed to delete employee:', error)
+      toast.error('Failed to delete employee')
+    }
   }
 
   // Export CSV
   const handleExport = () => {
+    if (filteredEmployees.length === 0) {
+      toast.error("No employees to export")
+      return
+    }
+
     const data = filteredEmployees.map(e => ({
       "Employee ID": e.employeeId,
       "First Name": e.firstName,
@@ -1057,6 +1214,24 @@ export default function UsersPage() {
       storekeeper: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400",
     }
     return <Badge className={colors[role]}>{role}</Badge>
+  }
+
+  // Show loading state
+  if (isLoading) {
+    return (
+      <>
+        <DashboardHeader 
+          title="Employee Management" 
+          description="Manage staff, roles, employment information, and contracts"
+        />
+        <div className="flex items-center justify-center h-64">
+          <div className="text-center">
+            <RefreshCw className="mx-auto size-8 animate-spin text-muted-foreground" />
+            <p className="mt-2 text-sm text-muted-foreground">Loading employees...</p>
+          </div>
+        </div>
+      </>
+    )
   }
 
   return (

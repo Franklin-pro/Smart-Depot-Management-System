@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useMemo, useState, useEffect } from "react"
 import { toast } from "sonner"
 import { 
   DollarSign, Plus, Search, Download, FileText, 
@@ -74,6 +74,7 @@ import {
   Pie,
   Cell,
 } from "recharts"
+import { expensesService } from "@/services"
 
 // Types
 type ExpenseCategory = 
@@ -134,11 +135,8 @@ interface Budget {
 
 // Helper function to clean number input
 const cleanNumberInput = (value: string): string => {
-  // Remove leading zeros (but keep single zero if it's the only character)
   let cleaned = value.replace(/^0+(?=\d)/, '')
-  // Remove non-numeric characters except decimal point
   cleaned = cleaned.replace(/[^0-9.]/g, '')
-  // Prevent multiple decimal points
   const parts = cleaned.split('.')
   if (parts.length > 2) {
     cleaned = parts[0] + '.' + parts.slice(1).join('')
@@ -151,10 +149,12 @@ function ExpenseForm({
   onSubmit, 
   onCancel,
   initial,
+  isLoading = false,
 }: { 
   onSubmit: (data: any) => void
   onCancel: () => void
   initial?: Expense
+  isLoading?: boolean
 }) {
   const [category, setCategory] = useState<ExpenseCategory>(initial?.category || "other")
   const [description, setDescription] = useState(initial?.description || "")
@@ -186,7 +186,6 @@ function ExpenseForm({
     { value: "other", label: "Other Expenses", icon: DollarSign },
   ]
 
-  // Handle number input changes
   const handleNumberChange = (setter: (value: number) => void) => (e: React.ChangeEvent<HTMLInputElement>) => {
     const rawValue = e.target.value
     const cleanedValue = cleanNumberInput(rawValue)
@@ -194,7 +193,6 @@ function ExpenseForm({
     setter(isNaN(num) ? 0 : num)
   }
 
-  // Handle quantity change with auto-calc
   const handleQuantityChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const rawValue = e.target.value
     const cleanedValue = cleanNumberInput(rawValue)
@@ -207,7 +205,6 @@ function ExpenseForm({
     }
   }
 
-  // Handle unit price change with auto-calc
   const handleUnitPriceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const rawValue = e.target.value
     const cleanedValue = cleanNumberInput(rawValue)
@@ -353,7 +350,7 @@ function ExpenseForm({
       </div>
 
       <div className="flex gap-2 justify-end">
-        <Button variant="outline" onClick={onCancel}>
+        <Button variant="outline" onClick={onCancel} disabled={isLoading}>
           Cancel
         </Button>
         <Button onClick={() => onSubmit({
@@ -369,8 +366,8 @@ function ExpenseForm({
           invoiceNumber: invoiceNumber || undefined,
           receiptNumber: receiptNumber || undefined,
           notes: notes || undefined,
-        })}>
-          {initial ? "Update Expense" : "Record Expense"}
+        })} disabled={isLoading}>
+          {isLoading ? "Saving..." : initial ? "Update Expense" : "Record Expense"}
         </Button>
       </div>
     </div>
@@ -502,6 +499,8 @@ export default function ExpensesPage() {
   const { currentUser } = useApp()
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [budgets, setBudgets] = useState<Budget[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const [query, setQuery] = useState("")
   const [categoryFilter, setCategoryFilter] = useState<ExpenseCategory | "all">("all")
   const [statusFilter, setStatusFilter] = useState<ExpenseStatus | "all">("all")
@@ -512,6 +511,24 @@ export default function ExpensesPage() {
   const [deletingExpense, setDeletingExpense] = useState<Expense | null>(null)
   const [viewingExpense, setViewingExpense] = useState<Expense | null>(null)
   const [activeTab, setActiveTab] = useState("expenses")
+
+  // ✅ Fetch expenses from API on mount
+  useEffect(() => {
+    const fetchExpenses = async () => {
+      setIsLoading(true)
+      try {
+        const data:any = await expensesService.getAll()
+        setExpenses(data)
+      } catch (error) {
+        console.error('Failed to fetch expenses:', error)
+        toast.error('Failed to load expenses')
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    fetchExpenses()
+  }, [])
 
   // Filter expenses
   const filteredExpenses = useMemo(() => {
@@ -631,45 +648,69 @@ export default function ExpensesPage() {
     other: "#9ca3af",
   }
 
-  // Add expense
-  const handleAddExpense = (data: any) => {
-    const newExpense: Expense = {
-      id: `exp_${Date.now()}`,
-      expenseNumber: `EXP-${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, '0')}${String(expenses.length + 1).padStart(5, '0')}`,
-      status: "paid",
-      createdBy: currentUser?.name || "System",
-      createdAt: new Date().toISOString(),
-      ...data,
+  // Add expense with API
+  const handleAddExpense = async (data: any) => {
+    setIsSubmitting(true)
+    try {
+      const expenseData = {
+        ...data,
+        status: "paid" as ExpenseStatus,
+        createdBy: currentUser?.name || "System",
+      }
+      
+      const newExpense:any = await expensesService.create(expenseData)
+      setExpenses([newExpense, ...expenses])
+      
+      setAddOpen(false)
+      toast.success(`Expense recorded: ${formatCurrency(data.amount)}`)
+    } catch (error) {
+      console.error('Failed to add expense:', error)
+      toast.error('Failed to record expense')
+    } finally {
+      setIsSubmitting(false)
     }
-    
-    setExpenses([newExpense, ...expenses])
-    setAddOpen(false)
-    toast.success(`Expense recorded: ${formatCurrency(data.amount)}`)
   }
 
-  // Update expense
-  const handleUpdateExpense = (data: any) => {
-    if (!editingExpense) return
-    
-    const updatedExpense: Expense = {
-      ...editingExpense,
+const handleUpdateExpense = async (data: any) => {
+  if (!editingExpense) return
+  
+  setIsSubmitting(true)
+  try {
+    const updatedData = {
       ...data,
       updatedBy: currentUser?.name || "System",
       updatedAt: new Date().toISOString(),
     }
     
+    const updatedExpense = await expensesService.update(editingExpense.id, updatedData)
     setExpenses(expenses.map(e => e.id === editingExpense.id ? updatedExpense : e))
+    
     setEditingExpense(null)
     toast.success("Expense updated")
+  } catch (error) {
+    console.error('Failed to update expense:', error)
+    toast.error('Failed to update expense')
+  } finally {
+    setIsSubmitting(false)
   }
+}
 
-  // Delete expense
-  const handleDeleteExpense = () => {
+  // Delete expense with API
+  const handleDeleteExpense = async () => {
     if (!deletingExpense) return
     
-    setExpenses(expenses.filter(e => e.id !== deletingExpense.id))
-    setDeletingExpense(null)
-    toast.success("Expense deleted")
+    setIsSubmitting(true)
+    try {
+      await expensesService.delete(deletingExpense.id)
+      setExpenses(expenses.filter(e => e.id !== deletingExpense.id))
+      setDeletingExpense(null)
+      toast.success("Expense deleted")
+    } catch (error) {
+      console.error('Failed to delete expense:', error)
+      toast.error('Failed to delete expense')
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   // Add budget
@@ -730,6 +771,18 @@ export default function ExpensesPage() {
     toast.success("Expenses exported")
   }
 
+  // Show loading state
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <RefreshCw className="mx-auto size-8 animate-spin text-muted-foreground" />
+          <p className="mt-2 text-sm text-muted-foreground">Loading expenses...</p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <>
       <DashboardHeader 
@@ -737,7 +790,7 @@ export default function ExpensesPage() {
         description="Track operational costs, budgets, and financial planning"
       />
       
-      {/* Action Buttons - Placed outside DashboardHeader */}
+      {/* Action Buttons */}
       <div className="flex justify-end gap-2 px-4 md:px-6 pt-2">
         <Button variant="outline" onClick={handleExport}>
           <Download className="size-4 mr-2" />
@@ -756,9 +809,9 @@ export default function ExpensesPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs text-muted-foreground">Total Expenses</p>
-                <p className="text-2xl font-bold text-red-600">{formatCurrency(stats.totalExpenses)}</p>
+                <p className="text-2xl font-bold text-red-600 dark:text-red-400">{formatCurrency(stats.totalExpenses)}</p>
               </div>
-              <DollarSign className="size-6 text-red-500" />
+              <DollarSign className="size-6 text-red-500 dark:text-red-400" />
             </div>
           </Card>
 
@@ -766,9 +819,9 @@ export default function ExpensesPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs text-muted-foreground">Paid</p>
-                <p className="text-2xl font-bold text-green-600">{formatCurrency(stats.paidExpenses)}</p>
+                <p className="text-2xl font-bold text-green-600 dark:text-green-400">{formatCurrency(stats.paidExpenses)}</p>
               </div>
-              <CheckCircle className="size-6 text-green-500" />
+              <CheckCircle className="size-6 text-green-500 dark:text-green-400" />
             </div>
           </Card>
 
@@ -776,9 +829,9 @@ export default function ExpensesPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs text-muted-foreground">Pending</p>
-                <p className="text-2xl font-bold text-yellow-600">{formatCurrency(stats.pendingExpenses)}</p>
+                <p className="text-2xl font-bold text-yellow-600 dark:text-yellow-400">{formatCurrency(stats.pendingExpenses)}</p>
               </div>
-              <Clock className="size-6 text-yellow-500" />
+              <Clock className="size-6 text-yellow-500 dark:text-yellow-400" />
             </div>
           </Card>
 
@@ -788,7 +841,7 @@ export default function ExpensesPage() {
                 <p className="text-xs text-muted-foreground">Pending Count</p>
                 <p className="text-2xl font-bold">{stats.pendingCount}</p>
               </div>
-              <AlertCircle className="size-6 text-orange-500" />
+              <AlertCircle className="size-6 text-orange-500 dark:text-orange-400" />
             </div>
           </Card>
 
@@ -798,7 +851,7 @@ export default function ExpensesPage() {
                 <p className="text-xs text-muted-foreground">Avg Expense</p>
                 <p className="text-2xl font-bold">{formatCurrency(stats.averageExpense)}</p>
               </div>
-              <TrendingUp className="size-6 text-purple-500" />
+              <TrendingUp className="size-6 text-purple-500 dark:text-purple-400" />
             </div>
           </Card>
         </div>
@@ -892,7 +945,7 @@ export default function ExpensesPage() {
                         <TableCell className="font-mono text-sm">{expense.expenseNumber}</TableCell>
                         <TableCell className="text-sm">{formatDate(expense.date)}</TableCell>
                         <TableCell>
-                          <Badge variant="outline" className="capitalize">
+                          <Badge variant="outline" className="capitalize dark:border-gray-700">
                             {expense.category}
                           </Badge>
                         </TableCell>
@@ -900,7 +953,7 @@ export default function ExpensesPage() {
                         <TableCell>{expense.supplierName || "-"}</TableCell>
                         <TableCell className="text-right font-medium">{formatCurrency(expense.amount)}</TableCell>
                         <TableCell>
-                          <Badge variant="outline" className="capitalize text-xs">
+                          <Badge variant="outline" className="capitalize text-xs dark:border-gray-700">
                             {expense.paymentMethod.replace('_', ' ')}
                           </Badge>
                         </TableCell>
@@ -989,16 +1042,16 @@ export default function ExpensesPage() {
                         <TableCell className="capitalize">{item.category}</TableCell>
                         <TableCell className="text-right">{formatCurrency(item.allocated)}</TableCell>
                         <TableCell className="text-right">{formatCurrency(item.actual)}</TableCell>
-                        <TableCell className={`text-right ${item.variance >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        <TableCell className={`text-right ${item.variance >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
                           {item.variance >= 0 ? '+' : ''}{formatCurrency(item.variance)}
                         </TableCell>
                         <TableCell>
                           {item.variancePercent >= 0 ? (
-                            <Badge className="bg-green-100 text-green-800">
+                            <Badge className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400">
                               Under Budget ({item.variancePercent.toFixed(0)}%)
                             </Badge>
                           ) : (
-                            <Badge className="bg-red-100 text-red-800">
+                            <Badge className="bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400">
                               Over Budget ({Math.abs(item.variancePercent).toFixed(0)}%)
                             </Badge>
                           )}
@@ -1072,8 +1125,8 @@ export default function ExpensesPage() {
             <div className="grid gap-4 md:grid-cols-3">
               <Card className="p-4">
                 <div className="flex items-center gap-3">
-                  <div className="p-2 bg-red-100 rounded-lg">
-                    <TrendingUp className="size-5 text-red-600" />
+                  <div className="p-2 bg-red-100 dark:bg-red-900/30 rounded-lg">
+                    <TrendingUp className="size-5 text-red-600 dark:text-red-400" />
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Top Expense Category</p>
@@ -1087,8 +1140,8 @@ export default function ExpensesPage() {
 
               <Card className="p-4">
                 <div className="flex items-center gap-3">
-                  <div className="p-2 bg-green-100 rounded-lg">
-                    <CheckCircle className="size-5 text-green-600" />
+                  <div className="p-2 bg-green-100 dark:bg-green-900/30 rounded-lg">
+                    <CheckCircle className="size-5 text-green-600 dark:text-green-400" />
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Payment Efficiency</p>
@@ -1102,8 +1155,8 @@ export default function ExpensesPage() {
 
               <Card className="p-4">
                 <div className="flex items-center gap-3">
-                  <div className="p-2 bg-purple-100 rounded-lg">
-                    <Calendar className="size-5 text-purple-600" />
+                  <div className="p-2 bg-purple-100 dark:bg-purple-900/30 rounded-lg">
+                    <Calendar className="size-5 text-purple-600 dark:text-purple-400" />
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">This Month vs Last</p>
@@ -1168,6 +1221,7 @@ export default function ExpensesPage() {
           <ExpenseForm 
             onSubmit={handleAddExpense}
             onCancel={() => setAddOpen(false)}
+            isLoading={isSubmitting}
           />
         </DialogContent>
       </Dialog>
@@ -1184,6 +1238,7 @@ export default function ExpensesPage() {
               initial={editingExpense}
               onSubmit={handleUpdateExpense}
               onCancel={() => setEditingExpense(null)}
+              isLoading={isSubmitting}
             />
           )}
         </DialogContent>
