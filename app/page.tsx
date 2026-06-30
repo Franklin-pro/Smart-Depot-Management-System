@@ -12,10 +12,20 @@ export default function Home() {
 
   useEffect(() => {
     if (!ready) return
-    if (currentUser) router.replace(roleLandingPage[currentUser.role])
-    else router.replace("/login")
+    
+    // Check if user is authenticated
+    const token = localStorage.getItem('accessToken')
+    
+    if (currentUser && token) {
+      // User is logged in - redirect to their role-based page
+      router.replace(roleLandingPage[currentUser.role] || '/dashboard')
+    } else {
+      // No user or no token - redirect to login
+      router.replace('/login')
+    }
   }, [ready, currentUser, router])
 
+  // Show loading spinner while checking auth state
   return (
     <main className="flex min-h-screen items-center justify-center bg-background">
       <div className="flex flex-col items-center gap-3">

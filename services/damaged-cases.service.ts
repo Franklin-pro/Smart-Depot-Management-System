@@ -1,29 +1,40 @@
+// services/damaged-cases.service.ts
+import { api } from '@/lib/api';
 import type { DamagedCase } from '@/lib/types';
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000/api';
 
 export const damagedCasesService = {
   // Get all damaged cases
   async getAll(): Promise<DamagedCase[]> {
-    const response = await fetch(`${API_BASE}/damaged-cases`);
-    if (!response.ok) {
-      throw new Error('Failed to fetch damaged cases');
-    }
-    return response.json();
+    const response = await api.get('/damaged-cases');
+    return response.data;
   },
 
-  // Create a new damaged case report
-  async create(damagedCase: Omit<DamagedCase, 'id'>): Promise<DamagedCase> {
-    const response = await fetch(`${API_BASE}/damaged-cases`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(damagedCase),
-    });
-    if (!response.ok) {
-      throw new Error('Failed to create damaged case report');
-    }
-    return response.json();
+  // Get a specific damaged case
+  async getById(id: string): Promise<DamagedCase> {
+    const response = await api.get(`/damaged-cases/${id}`);
+    return response.data;
+  },
+
+  // Create a new damaged case
+  async create(caseData: Omit<DamagedCase, 'id' | 'createdAt'>): Promise<DamagedCase> {
+    const response = await api.post('/damaged-cases', caseData);
+    return response.data;
+  },
+
+  // Update a damaged case
+  async update(id: string, caseData: Partial<DamagedCase>): Promise<DamagedCase> {
+    const response = await api.patch(`/damaged-cases/${id}`, caseData);
+    return response.data;
+  },
+
+  // Delete a damaged case
+  async delete(id: string): Promise<void> {
+    await api.delete(`/damaged-cases/${id}`);
+  },
+
+  // Get damaged cases by product
+  async getByProduct(productId: string): Promise<DamagedCase[]> {
+    const response = await api.get(`/damaged-cases/product/${productId}`);
+    return response.data;
   },
 };

@@ -34,43 +34,35 @@ export default function LoginPage() {
     setLoading(true)
     
     try {
-      // Call the login API
-      const response:any = await usersService.login(email, password)
+      // Use the usersService login (which now stores token correctly)
+      const response = await usersService.login(email, password)
       
-      console.log("Login response:", response) // For debugging
-
-      // Store the access token
-      if (response.accessToken) {
-        localStorage.setItem('token', response.accessToken)
-        localStorage.setItem('tokenType', response.tokenType || 'bearer')
-      }
+      console.log("Login response:", response)
 
       // Get user data from response
-      const user = response.user || response
+      const user = response.user
 
-      // Store user info in localStorage for persistence
-      localStorage.setItem('user', JSON.stringify(user))
-
-      // Update app state with user
-      // The login function should accept the user object or email/password
-      // Assuming login expects email and password, we pass those
+      // Update app state
       login(email, password)
 
       // Show welcome message
-      toast.success(`Welcome back, ${user.name || 'User'}!`)
+      toast.success(`Welcome back, ${user.name}!`)
       
       // Get the role and redirect
       const userRole = user.role as Role
       const redirectPath = roleLandingPage[userRole] || '/dashboard'
       
-      console.log(`Redirecting to: ${redirectPath} for role: ${userRole}`) // For debugging
+      console.log(`Redirecting to: ${redirectPath} for role: ${userRole}`)
       
       // Redirect to the user's role-based landing page
       router.push(redirectPath)
       
-    } catch (error) {
+    } catch (error: any) {
       console.error('Login error:', error)
-      toast.error(error instanceof Error ? error.message : "Invalid email or password")
+      
+      // Extract error message from response
+      const errorMessage = error.response?.data?.detail || error.message || "Invalid email or password"
+      toast.error(errorMessage)
     } finally {
       setLoading(false)
     }

@@ -1,44 +1,51 @@
+// services/empty-case-transactions.service.ts
+import { api } from '@/lib/api';
 import type { EmptyCaseTransaction } from '@/lib/types';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000/api';
-
 export const emptyCaseTransactionsService = {
-  // Get all empty case transactions
+  // Get all transactions
   async getAll(): Promise<EmptyCaseTransaction[]> {
-    const response = await fetch(`${API_BASE}/empty-case-transactions`);
-    if (!response.ok) {
-      throw new Error('Failed to fetch empty case transactions');
-    }
-    return response.json();
+    const response = await api.get('/empty-case-transactions');
+    return response.data;
   },
 
-  // Create a new empty case transaction
-  async create(transaction: Omit<EmptyCaseTransaction, 'id' | 'returnedQuantity' | 'pendingQuantity' | 'totalDepositValue' | 'refundedAmount' | 'productName' | 'status' | 'createdAt' | 'updatedAt'>): Promise<EmptyCaseTransaction> {
-    const response = await fetch(`${API_BASE}/empty-case-transactions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(transaction),
-    });
-    if (!response.ok) {
-      throw new Error('Failed to create empty case transaction');
-    }
-    return response.json();
+  // Get a specific transaction
+  async getById(id: string): Promise<EmptyCaseTransaction> {
+    const response = await api.get(`/empty-case-transactions/${id}`);
+    return response.data;
   },
 
-  // Process empty case return
-  async processReturn(id: string, data: { returnQuantity: number; processedBy: string }): Promise<EmptyCaseTransaction> {
-    const response = await fetch(`${API_BASE}/empty-case-transactions/${id}/process-return`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(data),
-    });
-    if (!response.ok) {
-      throw new Error('Failed to process return');
-    }
-    return response.json();
+  // Create a new transaction
+  async create(transaction: Omit<EmptyCaseTransaction, 'id' | 'createdAt'>): Promise<EmptyCaseTransaction> {
+    const response = await api.post('/empty-case-transactions', transaction);
+    return response.data;
+  },
+
+  // Update a transaction
+  async update(id: string, transaction: Partial<EmptyCaseTransaction>): Promise<EmptyCaseTransaction> {
+    const response = await api.patch(`/empty-case-transactions/${id}`, transaction);
+    return response.data;
+  },
+
+  async processReturn (id: string, returnData: { returnQuantity: number,processedBy: string }): Promise<EmptyCaseTransaction> {
+    const response = await api.post(`/empty-case-transactions/${id}/process-return`, returnData);
+    return response.data;
+  },
+
+  // Delete a transaction
+  async delete(id: string): Promise<void> {
+    await api.delete(`/empty-case-transactions/${id}`);
+  },
+
+  // Get transactions by customer
+  async getByCustomer(customerId: string): Promise<EmptyCaseTransaction[]> {
+    const response = await api.get(`/empty-case-transactions/customer/${customerId}`);
+    return response.data;
+  },
+
+  // Get pending empty cases
+  async getPending(): Promise<EmptyCaseTransaction[]> {
+    const response = await api.get('/empty-case-transactions/pending');
+    return response.data;
   },
 };

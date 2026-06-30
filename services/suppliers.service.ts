@@ -1,29 +1,40 @@
+// services/suppliers.service.ts
+import { api } from '@/lib/api';
 import type { Supplier } from '@/lib/types';
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000/api';
 
 export const suppliersService = {
   // Get all suppliers
   async getAll(): Promise<Supplier[]> {
-    const response = await fetch(`${API_BASE}/suppliers`);
-    if (!response.ok) {
-      throw new Error('Failed to fetch suppliers');
-    }
-    return response.json();
+    const response = await api.get('/suppliers');
+    return response.data;
+  },
+
+  // Get a specific supplier
+  async getById(id: string): Promise<Supplier> {
+    const response = await api.get(`/suppliers/${id}`);
+    return response.data;
   },
 
   // Create a new supplier
-  async create(supplier: Omit<Supplier, 'id' | 'productsSupplied' | 'createdAt'>): Promise<Supplier> {
-    const response = await fetch(`${API_BASE}/suppliers`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(supplier),
-    });
-    if (!response.ok) {
-      throw new Error('Failed to create supplier');
-    }
-    return response.json();
+  async create(supplier: Omit<Supplier, 'id' | 'createdAt'>): Promise<Supplier> {
+    const response = await api.post('/suppliers', supplier);
+    return response.data;
+  },
+
+  // Update a supplier
+  async update(id: string, supplier: Partial<Supplier>): Promise<Supplier> {
+    const response = await api.patch(`/suppliers/${id}`, supplier);
+    return response.data;
+  },
+
+  // Delete a supplier
+  async delete(id: string): Promise<void> {
+    await api.delete(`/suppliers/${id}`);
+  },
+
+  // Get supplier by name
+  async getByName(name: string): Promise<Supplier[]> {
+    const response = await api.get(`/suppliers/search?name=${name}`);
+    return response.data;
   },
 };
