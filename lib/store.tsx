@@ -55,6 +55,9 @@ type AppState = {
   addProduct: (p: Omit<Product, "id" | "createdAt">) => Promise<void>
   updateProduct: (id: string, p: Partial<Product>) => Promise<void>
   deleteProduct: (id: string) => Promise<void>
+  addCustomer: (c: Omit<Customer, "id" | "createdAt" | "updatedAt">) => Promise<Customer>
+  updateCustomer: (id: string, c: Partial<Customer>) => Promise<Customer>
+  deleteCustomer: (id: string) => Promise<void>
   addSale: (s: NewSale) => Promise<Sale>
   recordEmptyReturn: (customerId: string, qty: number) => Promise<void>
   addExpense: (e: Omit<Expense, "id" | "invoiceNumber">) => Promise<void>
@@ -357,6 +360,35 @@ export function AppProvider({ children }: { children: ReactNode }) {
     logout,
     refreshData,
 
+    // ============================================
+    // CUSTOMER CRUD OPERATIONS
+    // ============================================
+    async addCustomer(c) {
+      const customer = await customersService.create(c)
+      setCustomers((prev) => [customer, ...prev])
+      pushActivity("customer", `New customer ${c.name} added`)
+      return customer
+    },
+
+    async updateCustomer(id, patch) {
+      const updated = await customersService.update(id, patch)
+      setCustomers((prev) => prev.map((c) => (c.id === id ? updated : c)))
+      pushActivity("customer", `Customer ${updated.name} updated`)
+      return updated
+    },
+
+    async deleteCustomer(id) {
+      const customer = customers.find(c => c.id === id)
+      await customersService.delete(id)
+      setCustomers((prev) => prev.filter((c) => c.id !== id))
+      if (customer) {
+        pushActivity("customer", `Customer ${customer.name} deleted`)
+      }
+    },
+
+    // ============================================
+    // PRODUCT CRUD OPERATIONS
+    // ============================================
     async addProduct(p) {
       const product = await productsService.create(p)
       setProducts((prev) => [product, ...prev])
@@ -373,6 +405,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setProducts((prev) => prev.filter((p) => p.id !== id))
     },
 
+    // ============================================
+    // SALE OPERATIONS
+    // ============================================
     async addSale(s:any) {
       const sale = await salesService.create(s)
       setSales((prev) => [sale, ...prev])
@@ -400,6 +435,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       pushActivity("empty", `${cust?.name ?? "Customer"} returned ${qty} empty cases`)
     },
 
+    // ============================================
+    // EXPENSE OPERATIONS
+    // ============================================
     async addExpense(e) {
       const expense = await expensesService.create(e)
       setExpenses((prev) => [expense, ...prev])
@@ -416,12 +454,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setExpenses((prev) => prev.filter((e) => e.id !== id))
     },
 
+    // ============================================
+    // SUPPLIER OPERATIONS
+    // ============================================
     async addSupplier(s) {
       const supplier = await suppliersService.create(s)
       setSuppliers((prev) => [supplier, ...prev])
       pushActivity("supplier", `New supplier ${s.name} added`)
     },
 
+    // ============================================
+    // USER OPERATIONS
+    // ============================================
     async addUser(u) {
       const user = await usersService.create(u)
       setUsers((prev) => [user, ...prev])
@@ -438,6 +482,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setUsers((prev) => prev.filter((u) => u.id !== id))
     },
 
+    // ============================================
+    // NOTIFICATION OPERATIONS
+    // ============================================
     async markNotificationsRead(notificationIds?: string[]) {
       await notificationsService.markRead(notificationIds)
       if (notificationIds) {
@@ -451,6 +498,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
     },
 
+    // ============================================
+    // EMPTY CASE TRANSACTION OPERATIONS
+    // ============================================
     async addEmptyCaseTransaction(t:any) {
       const transaction = await emptyCaseTransactionsService.create(t)
       setEmptyCaseTransactions((prev) => [transaction, ...prev])

@@ -67,6 +67,7 @@ import {
   Cell,
 } from "recharts"
 import { salesService } from "@/services"
+import { useTheme } from "next-themes"
 
 // Types
 interface CartItem {
@@ -80,6 +81,7 @@ interface CartItem {
 interface SaleItem {
   productId: string
   product: Product
+  name: string
   quantity: number
   unitPrice: number
   subtotal: number
@@ -503,7 +505,7 @@ function ReceiptModal({ sale, onClose }: { sale: SaleRecord | null, onClose: () 
               <TableBody>
                 {sale.items && sale.items.map((item, idx) => (
                   <TableRow key={idx}>
-                    <TableCell className="text-sm">{item.product?.name || "Unknown"}</TableCell>
+                    <TableCell className="text-sm">{item.name || "Unknownn"}</TableCell>
                     <TableCell className="text-right">{item.quantity}</TableCell>
                     <TableCell className="text-right">{formatCurrency(item.unitPrice)}</TableCell>
                     <TableCell className="text-right">{formatCurrency(item.subtotal)}</TableCell>
@@ -593,6 +595,7 @@ export default function SalesPage() {
     setSales
   } = useApp()
   
+  const { theme } = useTheme()
   const [isLoading, setIsLoading] = useState(true)
   const [cart, setCart] = useState<CartItem[]>([])
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
@@ -606,6 +609,31 @@ export default function SalesPage() {
   const [query, setQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState<"all" | "completed" | "cancelled">("all")
   
+  // Get theme-aware chart colors
+  const isDark = theme === 'dark'
+  
+  const chartColors = {
+    grid: isDark ? '#374151' : '#e5e7eb',
+    text: isDark ? '#9ca3af' : '#6b7280',
+    background: isDark ? 'transparent' : 'transparent',
+    revenue: '#10b981',
+    transactions: '#3b82f6',
+    cash: '#10b981',
+    card: '#3b82f6',
+    mobile: '#f59e0b',
+    bank: '#8b5cf6',
+    quantity: '#f59e0b',
+  }
+
+  // Chart tooltip style
+  const tooltipStyle = {
+    backgroundColor: isDark ? '#1f2937' : '#ffffff',
+    borderColor: isDark ? '#374151' : '#e5e7eb',
+    color: isDark ? '#f9fafb' : '#111827',
+    borderRadius: '8px',
+    padding: '12px',
+  }
+
   // ✅ Fetch sales from API on mount
   useEffect(() => {
     const fetchSales = async () => {
@@ -778,6 +806,7 @@ export default function SalesPage() {
         items: cart.map(item => ({
           productId: item.productId,
           product: item.product,
+          name: item.product.name,
           quantity: item.quantity,
           unitPrice: item.unitPrice,
           subtotal: item.subtotal,
@@ -1257,7 +1286,7 @@ export default function SalesPage() {
             </Card>
           </TabsContent>
           
-          {/* Analytics Tab */}
+          {/* Analytics Tab - Fixed with theme-aware colors */}
           <TabsContent value="analytics" className="space-y-4">
             <div className="grid gap-4 md:grid-cols-2">
               {/* Sales Trend Chart */}
@@ -1265,18 +1294,52 @@ export default function SalesPage() {
                 <h3 className="text-lg font-semibold mb-4">Sales Trend (Last 7 Days)</h3>
                 <ResponsiveContainer width="100%" height={300}>
                   <LineChart data={salesTrend}>
-                    <CartesianGrid strokeDasharray="3 3" className="stroke-gray-200 dark:stroke-gray-800" />
-                    <XAxis dataKey="date" />
-                    <YAxis yAxisId="left" tickFormatter={(v) => formatCurrency(v)} />
-                    <YAxis yAxisId="right" orientation="right" />
+                    <CartesianGrid strokeDasharray="3 3" stroke={chartColors.grid} />
+                    <XAxis 
+                      dataKey="date" 
+                      tick={{ fill: chartColors.text, fontSize: 12 }}
+                      stroke={chartColors.grid}
+                    />
+                    <YAxis 
+                      yAxisId="left" 
+                      tickFormatter={(v) => formatCurrency(v)}
+                      tick={{ fill: chartColors.text, fontSize: 12 }}
+                      stroke={chartColors.grid}
+                    />
+                    <YAxis 
+                      yAxisId="right" 
+                      orientation="right"
+                      tick={{ fill: chartColors.text, fontSize: 12 }}
+                      stroke={chartColors.grid}
+                    />
                     <RechartsTooltip 
                       formatter={(value: number, name: string) => 
                         name === "revenue" ? formatCurrency(value) : value
                       }
+                      contentStyle={tooltipStyle}
+                      labelStyle={{ color: isDark ? '#f9fafb' : '#111827' }}
                     />
-                    <Legend />
-                    <Line yAxisId="left" type="monotone" dataKey="revenue" stroke="#10b981" name="Revenue" strokeWidth={2} />
-                    <Line yAxisId="right" type="monotone" dataKey="transactions" stroke="#3b82f6" name="Transactions" strokeWidth={2} />
+                    <Legend 
+                      wrapperStyle={{ color: isDark ? '#f9fafb' : '#111827' }}
+                    />
+                    <Line 
+                      yAxisId="left" 
+                      type="monotone" 
+                      dataKey="revenue" 
+                      stroke={chartColors.revenue} 
+                      name="Revenue" 
+                      strokeWidth={2}
+                      dot={{ fill: chartColors.revenue, strokeWidth: 2 }}
+                    />
+                    <Line 
+                      yAxisId="right" 
+                      type="monotone" 
+                      dataKey="transactions" 
+                      stroke={chartColors.transactions} 
+                      name="Transactions" 
+                      strokeWidth={2}
+                      dot={{ fill: chartColors.transactions, strokeWidth: 2 }}
+                    />
                   </LineChart>
                 </ResponsiveContainer>
               </Card>
@@ -1286,16 +1349,30 @@ export default function SalesPage() {
                 <h3 className="text-lg font-semibold mb-4">Popular Products</h3>
                 <ResponsiveContainer width="100%" height={300}>
                   <BarChart data={popularProducts} layout="vertical">
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis type="number" />
-                    <YAxis type="category" dataKey="name" width={100} />
+                    <CartesianGrid strokeDasharray="3 3" stroke={chartColors.grid} />
+                    <XAxis 
+                      type="number" 
+                      tick={{ fill: chartColors.text, fontSize: 12 }}
+                      stroke={chartColors.grid}
+                    />
+                    <YAxis 
+                      type="category" 
+                      dataKey="name" 
+                      width={100}
+                      tick={{ fill: chartColors.text, fontSize: 12 }}
+                      stroke={chartColors.grid}
+                    />
                     <RechartsTooltip 
                       formatter={(value: number, name: string) => 
                         name === "quantity" ? `${value} cases` : formatCurrency(value)
                       }
+                      contentStyle={tooltipStyle}
+                      labelStyle={{ color: isDark ? '#f9fafb' : '#111827' }}
                     />
-                    <Legend />
-                    <Bar dataKey="quantity" fill="#f59e0b" name="Cases Sold" />
+                    <Legend 
+                      wrapperStyle={{ color: isDark ? '#f9fafb' : '#111827' }}
+                    />
+                    <Bar dataKey="quantity" fill={chartColors.quantity} name="Cases Sold" radius={[0, 4, 4, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </Card>
@@ -1311,22 +1388,32 @@ export default function SalesPage() {
                       { name: "Cash", value: typedSales.filter(s => s.paymentMethod === "cash" && s.status === "completed").length },
                       { name: "Card", value: typedSales.filter(s => s.paymentMethod === "card" && s.status === "completed").length },
                       { name: "Mobile", value: typedSales.filter(s => s.paymentMethod === "mobile" && s.status === "completed").length },
-                      { name: "Credit", value: typedSales.filter(s => s.paymentMethod === "credit" && s.status === "completed").length },
+                      { name: "Bank Transfer", value: typedSales.filter(s => s.paymentMethod === "bank" && s.status === "completed").length },
                     ]}
                     cx="50%"
                     cy="50%"
                     labelLine={false}
-                    label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                    label={({ name, percent }) => {
+                      const percentage = (percent * 100).toFixed(0)
+                      return `${name}: ${percentage}%`
+                    }}
                     outerRadius={80}
                     fill="#8884d8"
                     dataKey="value"
                   >
-                    <Cell fill="#10b981" />
-                    <Cell fill="#3b82f6" />
-                    <Cell fill="#f59e0b" />
-                    <Cell fill="#8b5cf6" />
+                    <Cell fill={chartColors.cash} />
+                    <Cell fill={chartColors.card} />
+                    <Cell fill={chartColors.mobile} />
+                    <Cell fill={chartColors.bank} />
                   </Pie>
-                  <RechartsTooltip />
+                  <RechartsTooltip 
+                    contentStyle={tooltipStyle}
+                    labelStyle={{ color: isDark ? '#f9fafb' : '#111827' }}
+                    formatter={(value: number) => `${value} transactions`}
+                  />
+                  <Legend 
+                    wrapperStyle={{ color: isDark ? '#f9fafb' : '#111827' }}
+                  />
                 </RechartsPieChart>
               </ResponsiveContainer>
             </Card>

@@ -138,7 +138,7 @@ export type Expense = {
 
 export type Activity = {
   id: string
-  type: "sale" | "stock" | "expense" | "empty" | "expiry" | "user" | "supplier"
+  type: "supplier" | "sale" | "stock" | "expense" | "empty" | "expiry" | "user" | "customer" | "return" | "adjustment" | "damage"
   message: string
   createdAt: string
 }

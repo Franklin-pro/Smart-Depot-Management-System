@@ -64,6 +64,20 @@ interface ReceiptRecord {
   metadata?: Record<string, any>
 }
 
+// Helper function to safely get ID string
+const safeId = (id: any): string => {
+  if (!id) return String(Date.now())
+  if (typeof id === 'string') return id
+  if (typeof id === 'number') return String(id)
+  return String(id)
+}
+
+// Helper function to safely slice ID
+const safeSlice = (id: any, length: number = 8): string => {
+  const idStr = safeId(id)
+  return idStr.slice(-length)
+}
+
 // Receipt Modal Component
 function ReceiptViewModal({ receipt, onClose }: { receipt: ReceiptRecord | null; onClose: () => void }) {
   if (!receipt) return null
@@ -366,8 +380,8 @@ export default function ReceiptsPage() {
       sales.forEach((sale: any) => {
         if (sale && sale.status === "completed") {
           allReceipts.push({
-            id: `receipt_sale_${sale.id || Date.now()}`,
-            receiptNumber: `RCP-${sale.invoiceNumber || sale.id?.slice(-8) || Date.now()}`,
+            id: `receipt_sale_${safeId(sale.id)}`,
+            receiptNumber: `RCP-${sale.invoiceNumber || safeSlice(sale.id, 8) || String(Date.now()).slice(-8)}`,
             type: "sale",
             title: "Sale Receipt",
             description: `Sale of ${sale.items?.length || 0} item(s)`,
@@ -378,7 +392,7 @@ export default function ReceiptsPage() {
             paymentMethod: sale.paymentMethod || "cash",
             status: "completed",
             items: sale.items?.map((item: any) => ({
-              name: item.product?.name,
+              name: item.product?.name || item.name,
               quantity: item.quantity,
               unitPrice: item.unitPrice,
               total: item.subtotal,
@@ -395,23 +409,23 @@ export default function ReceiptsPage() {
       expenses.forEach((expense: any) => {
         if (expense) {
           allReceipts.push({
-            id: `receipt_expense_${expense.id || Date.now()}`,
-            receiptNumber: `EXP-${expense.expenseNumber || expense.id?.slice(-8) || Date.now()}`,
+            id: `receipt_expense_${safeId(expense.id)}`,
+            receiptNumber: `EXP-${expense.expenseNumber || safeSlice(expense.id, 8) || String(Date.now()).slice(-8)}`,
             type: "expense",
             title: "Expense Receipt",
-            description: expense.description || "Expense",
+            description: expense.title || expense.description || "Expense",
             amount: expense.amount || 0,
             date: expense.date || new Date().toISOString(),
             supplierName: expense.supplierName,
             paymentMethod: expense.paymentMethod || "cash",
             status: expense.status === "paid" ? "completed" : "pending",
             items: expense.quantity ? [{
-              name: expense.description,
+              name: expense.title || expense.description,
               quantity: expense.quantity,
               unitPrice: expense.unitPrice,
               total: expense.amount,
             }] : undefined,
-            createdBy: expense.createdBy || "System",
+            createdBy: expense.recordedBy || expense.createdBy || "System",
             createdAt: expense.createdAt || new Date().toISOString(),
           })
         }
@@ -423,8 +437,8 @@ export default function ReceiptsPage() {
       emptyCaseTransactions.forEach((tx: any) => {
         if (tx) {
           allReceipts.push({
-            id: `receipt_empty_${tx.id || Date.now()}`,
-            receiptNumber: `EMP-${tx.id?.slice(-8) || Date.now()}`,
+            id: `receipt_empty_${safeId(tx.id)}`,
+            receiptNumber: `EMP-${safeSlice(tx.id, 8) || String(Date.now()).slice(-8)}`,
             type: "empty_case",
             title: "Empty Cases Deposit Receipt",
             description: `${tx.totalQuantity || 0} empty case(s) deposit for ${tx.productName || "Unknown"}`,
@@ -452,8 +466,8 @@ export default function ReceiptsPage() {
       supplierReturns.forEach((ret: any) => {
         if (ret) {
           allReceipts.push({
-            id: `receipt_return_${ret.id || Date.now()}`,
-            receiptNumber: `RET-${ret.receiptNumber || ret.id?.slice(-8) || Date.now()}`,
+            id: `receipt_return_${safeId(ret.id)}`,
+            receiptNumber: `RET-${ret.receiptNumber || safeSlice(ret.id, 8) || String(Date.now()).slice(-8)}`,
             type: "supplier_return",
             title: "Supplier Return Receipt",
             description: `Return of ${ret.quantity || 0} cases to supplier`,

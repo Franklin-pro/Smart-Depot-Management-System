@@ -3,7 +3,7 @@ import { api } from '@/lib/api';
 import type { Sale } from '@/lib/types';
 
 export interface NewSale {
-  customerId: string;
+  customerId?: string;
   items: Array<{
     productId: string;
     quantity: number;

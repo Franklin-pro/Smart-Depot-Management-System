@@ -100,13 +100,15 @@ type ExpenseStatus = "paid" | "pending" | "cancelled"
 interface Expense {
   id: string
   expenseNumber: string
+  title: string
+  recordedBy: string
   category: ExpenseCategory
   subcategory?: string
   description: string
   amount: number
   quantity?: number
   unitPrice?: number
-  paymentMethod: PaymentMethod
+  paymentMethod?: PaymentMethod // ✅ Make optional
   status: ExpenseStatus
   date: string
   dueDate?: string
@@ -144,6 +146,12 @@ const cleanNumberInput = (value: string): string => {
   return cleaned
 }
 
+// Helper function to format payment method safely
+const formatPaymentMethod = (method?: string): string => {
+  if (!method) return 'N/A'
+  return method.replace('_', ' ')
+}
+
 // Form components
 function ExpenseForm({ 
   onSubmit, 
@@ -157,6 +165,7 @@ function ExpenseForm({
   isLoading?: boolean
 }) {
   const [category, setCategory] = useState<ExpenseCategory>(initial?.category || "other")
+  const [title, setTitle] = useState(initial?.title || initial?.description || "")
   const [description, setDescription] = useState(initial?.description || "")
   const [amount, setAmount] = useState(initial?.amount || 0)
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(initial?.paymentMethod || "cash")
@@ -256,9 +265,18 @@ function ExpenseForm({
       </div>
 
       <div className="space-y-2">
-        <Label>Description *</Label>
+        <Label>Title *</Label>
         <Input
-          placeholder="Describe the expense..."
+          placeholder="Expense title..."
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+        />
+      </div>
+
+      <div className="space-y-2">
+        <Label>Description</Label>
+        <Input
+          placeholder="Detailed description..."
           value={description}
           onChange={(e) => setDescription(e.target.value)}
         />
@@ -354,8 +372,9 @@ function ExpenseForm({
           Cancel
         </Button>
         <Button onClick={() => onSubmit({
-          category,
+          title,
           description,
+          category,
           amount,
           quantity: quantity > 1 ? quantity : undefined,
           unitPrice: unitPrice > 0 ? unitPrice : undefined,
@@ -517,7 +536,7 @@ export default function ExpensesPage() {
     const fetchExpenses = async () => {
       setIsLoading(true)
       try {
-        const data:any = await expensesService.getAll()
+        const data: any = await expensesService.getAll()
         setExpenses(data)
       } catch (error) {
         console.error('Failed to fetch expenses:', error)
@@ -536,7 +555,8 @@ export default function ExpensesPage() {
 
     if (query) {
       filtered = filtered.filter(e =>
-        e.description.toLowerCase().includes(query.toLowerCase()) ||
+        e.title?.toLowerCase().includes(query.toLowerCase()) ||
+        e.description?.toLowerCase().includes(query.toLowerCase()) ||
         e.supplierName?.toLowerCase().includes(query.toLowerCase()) ||
         e.invoiceNumber?.toLowerCase().includes(query.toLowerCase())
       )
@@ -648,54 +668,91 @@ export default function ExpensesPage() {
     other: "#9ca3af",
   }
 
-  // Add expense with API
+  // ✅ Add expense with API
   const handleAddExpense = async (data: any) => {
     setIsSubmitting(true)
     try {
       const expenseData = {
-        ...data,
-        status: "paid" as ExpenseStatus,
+        title: data.title || data.description,
+        description: data.description,
+        category: data.category,
+        amount: data.amount,
+        quantity: data.quantity || 0,
+        unitPrice: data.unitPrice || 0,
+        paymentMethod: data.paymentMethod || "cash",
+        date: data.date,
+        dueDate: data.dueDate || null,
+        supplierName: data.supplierName || "",
+        invoiceNumber: data.invoiceNumber || "",
+        receiptNumber: data.receiptNumber || "",
+        notes: data.notes || "",
+        status: "paid",
+        recordedBy: currentUser?.name || "System",
         createdBy: currentUser?.name || "System",
       }
       
-      const newExpense:any = await expensesService.create(expenseData)
-      setExpenses([newExpense, ...expenses])
+      const newExpense: any = await expensesService.create(expenseData)
+      setExpenses([{
+        ...newExpense,
+        paymentMethod: newExpense.paymentMethod || "cash"
+      }, ...expenses])
       
       setAddOpen(false)
       toast.success(`Expense recorded: ${formatCurrency(data.amount)}`)
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to add expense:', error)
-      toast.error('Failed to record expense')
+      const errorMsg = error.response?.data?.detail?.[0]?.msg || 'Failed to record expense'
+      toast.error(errorMsg)
     } finally {
       setIsSubmitting(false)
     }
   }
 
-const handleUpdateExpense = async (data: any) => {
-  if (!editingExpense) return
-  
-  setIsSubmitting(true)
-  try {
-    const updatedData = {
-      ...data,
-      updatedBy: currentUser?.name || "System",
-      updatedAt: new Date().toISOString(),
-    }
-    
-    const updatedExpense = await expensesService.update(editingExpense.id, updatedData)
-    setExpenses(expenses.map(e => e.id === editingExpense.id ? updatedExpense : e))
-    
-    setEditingExpense(null)
-    toast.success("Expense updated")
-  } catch (error) {
-    console.error('Failed to update expense:', error)
-    toast.error('Failed to update expense')
-  } finally {
-    setIsSubmitting(false)
-  }
-}
 
-  // Delete expense with API
+  // ✅ Update expense with API
+  const handleUpdateExpense = async (data: any) => {
+    if (!editingExpense) return
+    
+    setIsSubmitting(true)
+    try {
+      const updatedData = {
+        title: data.title || data.description,
+        description: data.description,
+        category: data.category,
+        amount: data.amount,
+        quantity: data.quantity || 0,
+        unitPrice: data.unitPrice || 0,
+        paymentMethod: data.paymentMethod || "cash",
+        date: data.date,
+        dueDate: data.dueDate || null,
+        supplierName: data.supplierName || "",
+        invoiceNumber: data.invoiceNumber || "",
+        receiptNumber: data.receiptNumber || "",
+        notes: data.notes || "",
+        status: data.status || "paid",
+        recordedBy: currentUser?.name || "System",
+        updatedBy: currentUser?.name || "System",
+        updatedAt: new Date().toISOString(),
+      }
+      
+      const updatedExpense: any = await expensesService.update(editingExpense.id, updatedData)
+      setExpenses(expenses.map(e => e.id === editingExpense.id ? {
+        ...updatedExpense,
+        paymentMethod: updatedExpense.paymentMethod || "cash"
+      } : e))
+      
+      setEditingExpense(null)
+      toast.success("Expense updated")
+    } catch (error: any) {
+      console.error('Failed to update expense:', error)
+      const errorMsg = error.response?.data?.detail?.[0]?.msg || 'Failed to update expense'
+      toast.error(errorMsg)
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  // ✅ Delete expense with API
   const handleDeleteExpense = async () => {
     if (!deletingExpense) return
     
@@ -705,7 +762,7 @@ const handleUpdateExpense = async (data: any) => {
       setExpenses(expenses.filter(e => e.id !== deletingExpense.id))
       setDeletingExpense(null)
       toast.success("Expense deleted")
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to delete expense:', error)
       toast.error('Failed to delete expense')
     } finally {
@@ -746,16 +803,15 @@ const handleUpdateExpense = async (data: any) => {
     }
     
     const data = filteredExpenses.map(e => ({
-      "Expense Number": e.expenseNumber,
+      "Invoice Number": e.invoiceNumber || "-",
       "Category": e.category,
-      "Description": e.description,
+      "Title": e.title || e.description,
       "Amount": formatCurrency(e.amount),
-      "Payment Method": e.paymentMethod,
+      "Payment Method": formatPaymentMethod(e.paymentMethod),
       "Status": e.status,
       "Date": formatDate(e.date),
       "Supplier": e.supplierName || "-",
-      "Invoice": e.invoiceNumber || "-",
-      "Created By": e.createdBy,
+      "Recorded By": e.recordedBy || e.createdBy || "-",
     }))
 
     const headers = Object.keys(data[0]).join(",")
@@ -928,11 +984,11 @@ const handleUpdateExpense = async (data: any) => {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Expense #</TableHead>
+                      <TableHead>Invoice #</TableHead>
                       <TableHead>Date</TableHead>
                       <TableHead>Category</TableHead>
-                      <TableHead>Description</TableHead>
-                      <TableHead>Supplier</TableHead>
+                      <TableHead>Title</TableHead>
+                      <TableHead>Recorded By</TableHead>
                       <TableHead className="text-right">Amount</TableHead>
                       <TableHead>Payment</TableHead>
                       <TableHead>Status</TableHead>
@@ -942,19 +998,19 @@ const handleUpdateExpense = async (data: any) => {
                   <TableBody>
                     {filteredExpenses.map((expense) => (
                       <TableRow key={expense.id}>
-                        <TableCell className="font-mono text-sm">{expense.expenseNumber}</TableCell>
+                        <TableCell className="font-mono text-sm">{expense.invoiceNumber || "-"}</TableCell>
                         <TableCell className="text-sm">{formatDate(expense.date)}</TableCell>
                         <TableCell>
                           <Badge variant="outline" className="capitalize dark:border-gray-700">
                             {expense.category}
                           </Badge>
                         </TableCell>
-                        <TableCell className="max-w-xs truncate">{expense.description}</TableCell>
-                        <TableCell>{expense.supplierName || "-"}</TableCell>
+                        <TableCell className="max-w-xs truncate">{expense.title || expense.description}</TableCell>
+                        <TableCell>{expense.recordedBy || expense.createdBy || "-"}</TableCell>
                         <TableCell className="text-right font-medium">{formatCurrency(expense.amount)}</TableCell>
                         <TableCell>
                           <Badge variant="outline" className="capitalize text-xs dark:border-gray-700">
-                            {expense.paymentMethod.replace('_', ' ')}
+                            {formatPaymentMethod(expense.paymentMethod)}
                           </Badge>
                         </TableCell>
                         <TableCell>{getStatusBadge(expense.status)}</TableCell>
@@ -1244,12 +1300,12 @@ const handleUpdateExpense = async (data: any) => {
         </DialogContent>
       </Dialog>
 
-      {/* View Expense Dialog */}
+      {/* View Expense Dialog - FIXED */}
       <Dialog open={!!viewingExpense} onOpenChange={(o) => !o && setViewingExpense(null)}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Expense Details</DialogTitle>
-            <DialogDescription>{viewingExpense?.expenseNumber}</DialogDescription>
+            <DialogDescription>{viewingExpense?.invoiceNumber || "No invoice number"}</DialogDescription>
           </DialogHeader>
           {viewingExpense && (
             <div className="space-y-3">
@@ -1257,8 +1313,11 @@ const handleUpdateExpense = async (data: any) => {
                 <span className="text-muted-foreground">Category:</span>
                 <span className="capitalize font-medium">{viewingExpense.category}</span>
                 
+                <span className="text-muted-foreground">Title:</span>
+                <span>{viewingExpense.title || viewingExpense.description}</span>
+                
                 <span className="text-muted-foreground">Description:</span>
-                <span>{viewingExpense.description}</span>
+                <span>{viewingExpense.description || "-"}</span>
                 
                 <span className="text-muted-foreground">Amount:</span>
                 <span className="font-bold">{formatCurrency(viewingExpense.amount)}</span>
@@ -1267,10 +1326,24 @@ const handleUpdateExpense = async (data: any) => {
                 <span>{formatDate(viewingExpense.date)}</span>
                 
                 <span className="text-muted-foreground">Payment Method:</span>
-                <span className="capitalize">{viewingExpense.paymentMethod.replace('_', ' ')}</span>
+                <span className="capitalize">{formatPaymentMethod(viewingExpense.paymentMethod)}</span>
                 
                 <span className="text-muted-foreground">Status:</span>
                 <span>{getStatusBadge(viewingExpense.status)}</span>
+                
+                {viewingExpense.quantity && viewingExpense.quantity > 0 && (
+                  <>
+                    <span className="text-muted-foreground">Quantity:</span>
+                    <span>{viewingExpense.quantity}</span>
+                  </>
+                )}
+                
+                {viewingExpense.unitPrice && viewingExpense.unitPrice > 0 && (
+                  <>
+                    <span className="text-muted-foreground">Unit Price:</span>
+                    <span>{formatCurrency(viewingExpense.unitPrice)}</span>
+                  </>
+                )}
                 
                 {viewingExpense.supplierName && (
                   <>
@@ -1290,6 +1363,13 @@ const handleUpdateExpense = async (data: any) => {
                   <>
                     <span className="text-muted-foreground">Receipt:</span>
                     <span>{viewingExpense.receiptNumber}</span>
+                  </>
+                )}
+                
+                {viewingExpense.recordedBy && (
+                  <>
+                    <span className="text-muted-foreground">Recorded By:</span>
+                    <span>{viewingExpense.recordedBy}</span>
                   </>
                 )}
               </div>
