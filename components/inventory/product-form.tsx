@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useApp } from "@/lib/store"
 import type { Product } from "@/lib/types"
 import { Button } from "@/components/ui/button"
@@ -173,6 +173,9 @@ export function ProductForm({
   const [isCustomBottleCount, setIsCustomBottleCount] = useState(false)
   const [customBottleCount, setCustomBottleCount] = useState<number>(24)
   
+  // Use ref to track if initial setup is done
+  const isInitialized = useRef(false)
+  
   // Initialize form state with proper defaults
   const [v, setV] = useState<ProductFormValues>(() => ({
     name: initial?.name ?? "",
@@ -208,42 +211,43 @@ export function ProductForm({
   
   // Get current size options and selected size
   const sizeOptions = containerConfig.sizeOptions || []
-  const currentSize = sizeOptions.find(opt => opt.label === selectedSizeLabel)
   
   // FIXED: Get bottlesPerContainer with fallback
   const BOTTLES_PER_CONTAINER = v.bottlesPerContainer ?? 24
 
-  // Update bottlesPerContainer when category or size changes
+  // FIXED: Only run this effect on initial mount or when category changes
   useEffect(() => {
+    // Only run if not initialized yet or category changed
+    if (isInitialized.current) return
+    
     const config = getContainerConfig(v.category)
     
-    if (config.allowSizeCustomization && sizeOptions.length > 0) {
-      const matchingSize = sizeOptions.find(opt => opt.label === selectedSizeLabel)
-      if (matchingSize && matchingSize.bottles > 0) {
+    if (config.allowSizeCustomization && config.sizeOptions && config.sizeOptions.length > 0) {
+      // Find default option
+      const defaultOption = config.sizeOptions.find(opt => opt.label === "Standard Box") || 
+                           config.sizeOptions.find(opt => opt.label === "Standard") ||
+                           config.sizeOptions.find(opt => opt.bottles > 0)
+      
+      if (defaultOption && defaultOption.bottles > 0) {
         setV(prev => ({
           ...prev,
           containerType: config.type,
-          bottlesPerContainer: matchingSize.bottles,
-          containerSizeLabel: matchingSize.label
+          bottlesPerContainer: defaultOption.bottles,
+          containerSizeLabel: defaultOption.label
         }))
+        setSelectedSizeLabel(defaultOption.label)
         setIsCustomBottleCount(false)
-      } else if (matchingSize && matchingSize.bottles === 0) {
-        setIsCustomBottleCount(true)
+      } else if (defaultOption && defaultOption.bottles === 0) {
+        // Custom size is default
+        const customValue = customBottleCount || config.defaultBottlesPerContainer
         setV(prev => ({
           ...prev,
           containerType: config.type,
-          bottlesPerContainer: customBottleCount || config.defaultBottlesPerContainer,
+          bottlesPerContainer: customValue,
           containerSizeLabel: "Custom"
         }))
-      } else {
-        setV(prev => ({
-          ...prev,
-          containerType: config.type,
-          bottlesPerContainer: config.defaultBottlesPerContainer,
-          containerSizeLabel: "Standard"
-        }))
-        setSelectedSizeLabel("Standard")
-        setIsCustomBottleCount(false)
+        setSelectedSizeLabel("Custom")
+        setIsCustomBottleCount(true)
       }
     } else {
       setV(prev => ({
@@ -254,9 +258,11 @@ export function ProductForm({
       }))
       setIsCustomBottleCount(false)
     }
-  }, [v.category, selectedSizeLabel, customBottleCount, sizeOptions])
+    
+    isInitialized.current = true
+  }, [v.category]) // Only depend on category change
 
-  // Calculate derived values - FIXED: Use BOTTLES_PER_CONTAINER with fallback
+  // Calculate derived values
   const totalFromFullContainers = v.fullCases * BOTTLES_PER_CONTAINER
   const totalFromPartialContainers = (v.partialCases || []).reduce((sum, pc) => sum + pc.bottleCount, 0)
   const totalCapacity = totalFromFullContainers + totalFromPartialContainers
@@ -563,13 +569,13 @@ export function ProductForm({
         <h3 className="text-lg font-semibold">Stock Information</h3>
         
         {/* Category-specific container configuration */}
-        <div className="rounded-md bg-blue-50 p-3 mb-2">
-          <div className="flex items-center gap-2 text-sm text-blue-900">
+        <div className="rounded-md bg-blue-50 dark:bg-black p-3 mb-2">
+          <div className="flex items-center gap-2 text-sm text-blue-900 dark:text-blue-800">
             {getContainerIcon()}
             <span className="font-medium">
               {v.category} Configuration
             </span>
-            <Badge variant="outline" className="ml-auto bg-blue-100">
+            <Badge variant="outline" className="ml-auto bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-100">
               {containerConfig.type === "box" ? "Box" : "Case"}
             </Badge>
           </div>
