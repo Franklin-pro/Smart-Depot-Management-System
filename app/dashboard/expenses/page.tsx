@@ -9,7 +9,8 @@ import {
   CreditCard, Receipt, Building, Users, Truck,
   Coffee, Zap, Home, Shield, PenTool, AlertCircle,
   BarChart3, PieChart, Filter, ChevronRight,
-  X, CheckCircle, Clock, MoreHorizontal
+  X, CheckCircle, Clock, MoreHorizontal,
+  UploadCloud
 } from "lucide-react"
 import { useApp } from "@/lib/store"
 import { formatCurrency, formatDate } from "@/lib/format"
@@ -75,6 +76,7 @@ import {
   Cell,
 } from "recharts"
 import { expensesService } from "@/services"
+import Link from "next/link"
 
 // Types
 type ExpenseCategory = 
@@ -108,7 +110,7 @@ interface Expense {
   amount: number
   quantity?: number
   unitPrice?: number
-  paymentMethod?: PaymentMethod // ✅ Make optional
+  paymentMethod?: PaymentMethod
   status: ExpenseStatus
   date: string
   dueDate?: string
@@ -123,6 +125,8 @@ interface Expense {
   updatedBy?: string
   updatedAt?: string
   attachments?: string[]
+  receiptFileName?: string | null
+  receiptUrl?: string | null
 }
 
 interface Budget {
@@ -175,31 +179,94 @@ function ExpenseForm({
   const [invoiceNumber, setInvoiceNumber] = useState(initial?.invoiceNumber || "")
   const [receiptNumber, setReceiptNumber] = useState(initial?.receiptNumber || "")
   const [notes, setNotes] = useState(initial?.notes || "")
+  const [file, setFile] = useState<File | null>(null)
   const [quantity, setQuantity] = useState(initial?.quantity || 1)
   const [unitPrice, setUnitPrice] = useState(initial?.unitPrice || 0)
+  const [dragActive, setDragActive] = useState(false)
 
-  const categoryOptions: { value: ExpenseCategory; label: string; icon: any }[] = [
-    { value: "supplier", label: "Supplier Payments", icon: Truck },
-    { value: "salary", label: "Salaries & Wages", icon: Users },
-    { value: "rent", label: "Rent / Lease", icon: Building },
-    { value: "utilities", label: "Utilities (Electricity, Water)", icon: Zap },
-    { value: "marketing", label: "Marketing & Advertising", icon: TrendingUp },
-    { value: "maintenance", label: "Maintenance & Repairs", icon: PenTool },
-    { value: "transport", label: "Transport & Logistics", icon: Truck },
-    { value: "tax", label: "Taxes & Licenses", icon: Shield },
-    { value: "insurance", label: "Insurance", icon: Shield },
-    { value: "equipment", label: "Equipment Purchase", icon: Package },
-    { value: "cleaning", label: "Cleaning & Sanitation", icon: Coffee },
-    { value: "stationery", label: "Stationery & Printing", icon: FileText },
-    { value: "software", label: "Software & Subscriptions", icon: CreditCard },
-    { value: "other", label: "Other Expenses", icon: DollarSign },
+  // Validation states
+  const [errors, setErrors] = useState<{
+    title?: string
+    category?: string
+    amount?: string
+    date?: string
+    paymentMethod?: string
+    file?: string
+  }>({})
+
+  const categoryOptions: { value: ExpenseCategory; label: string; icon: any; color: string }[] = [
+    { value: "supplier", label: "Supplier Payments", icon: Truck, color: "text-blue-500" },
+    { value: "salary", label: "Salaries & Wages", icon: Users, color: "text-purple-500" },
+    { value: "rent", label: "Rent / Lease", icon: Building, color: "text-emerald-500" },
+    { value: "utilities", label: "Utilities", icon: Zap, color: "text-yellow-500" },
+    { value: "marketing", label: "Marketing & Advertising", icon: TrendingUp, color: "text-pink-500" },
+    { value: "maintenance", label: "Maintenance & Repairs", icon: PenTool, color: "text-orange-500" },
+    { value: "transport", label: "Transport & Logistics", icon: Truck, color: "text-cyan-500" },
+    { value: "tax", label: "Taxes & Licenses", icon: Shield, color: "text-gray-500" },
+    { value: "insurance", label: "Insurance", icon: Shield, color: "text-teal-500" },
+    { value: "equipment", label: "Equipment Purchase", icon: Package, color: "text-red-500" },
+    { value: "cleaning", label: "Cleaning & Sanitation", icon: Coffee, color: "text-lime-500" },
+    { value: "stationery", label: "Stationery & Printing", icon: FileText, color: "text-violet-500" },
+    { value: "software", label: "Software & Subscriptions", icon: CreditCard, color: "text-green-500" },
+    { value: "other", label: "Other Expenses", icon: DollarSign, color: "text-gray-400" },
   ]
+
+  // Validation function
+  const validateForm = (): boolean => {
+    const newErrors: typeof errors = {}
+    
+    // Validate Title
+    if (!title || title.trim() === '') {
+      newErrors.title = 'Title is required'
+    } else if (title.length < 3) {
+      newErrors.title = 'Title must be at least 3 characters'
+    } else if (title.length > 100) {
+      newErrors.title = 'Title must be less than 100 characters'
+    }
+    
+    // Validate Category
+    if (!category) {
+      newErrors.category = 'Category is required'
+    }
+    
+    // Validate Amount
+    if (amount <= 0) {
+      newErrors.amount = 'Amount must be greater than 0'
+    } else if (amount > 999999999) {
+      newErrors.amount = 'Amount is too large'
+    }
+    
+    // Validate Date
+    if (!date) {
+      newErrors.date = 'Date is required'
+    } 
+    
+    // Validate Payment Method
+    if (!paymentMethod) {
+      newErrors.paymentMethod = 'Payment method is required'
+    }
+    
+    // Validate File (optional - only if you want to require it)
+    // Uncomment if you want to require a file
+    // if (!file && !initial?.receiptUrl) {
+    //   newErrors.file = 'Receipt is required'
+    // }
+    
+    setErrors(newErrors)
+    return Object.keys(newErrors).length === 0
+  }
+
+  // Clear error for a specific field
+  const clearError = (field: keyof typeof errors) => {
+    setErrors(prev => ({ ...prev, [field]: undefined }))
+  }
 
   const handleNumberChange = (setter: (value: number) => void) => (e: React.ChangeEvent<HTMLInputElement>) => {
     const rawValue = e.target.value
     const cleanedValue = cleanNumberInput(rawValue)
     const num = parseFloat(cleanedValue)
     setter(isNaN(num) ? 0 : num)
+    clearError('amount')
   }
 
   const handleQuantityChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -226,167 +293,474 @@ function ExpenseForm({
     }
   }
 
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFile = e.target.files?.[0]
+    if (selectedFile) {
+      const maxSize = 5 * 1024 * 1024 // 5MB
+      if (selectedFile.size > maxSize) {
+        toast.error("File too large. Maximum size is 5MB")
+        e.target.value = ''
+        return
+      }
+      setFile(selectedFile)
+      clearError('file')
+    }
+  }
+
+  const handleDrag = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (e.type === "dragenter" || e.type === "dragover") {
+      setDragActive(true)
+    } else if (e.type === "dragleave") {
+      setDragActive(false)
+    }
+  }
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setDragActive(false)
+    
+    const files = e.dataTransfer.files
+    if (files && files[0]) {
+      const file = files[0]
+      const maxSize = 5 * 1024 * 1024
+      if (file.size > maxSize) {
+        toast.error("File too large. Maximum size is 5MB")
+        return
+      }
+      setFile(file)
+      clearError('file')
+    }
+  }
+
+  const removeFile = () => {
+    setFile(null)
+  }
+
+  const getFileIcon = (fileName: string) => {
+    const extension = fileName.split('.').pop()?.toLowerCase()
+    switch (extension) {
+      case 'pdf': return '📄'
+      case 'doc':
+      case 'docx': return '📝'
+      case 'jpg':
+      case 'jpeg':
+      case 'png':
+      case 'gif':
+      case 'webp': return '🖼️'
+      default: return '📎'
+    }
+  }
+
+  const handleSubmit = () => {
+    if (validateForm()) {
+      onSubmit({
+        title,
+        description,
+        category,
+        amount,
+        quantity: quantity > 1 ? quantity : undefined,
+        unitPrice: unitPrice > 0 ? unitPrice : undefined,
+        paymentMethod,
+        date,
+        dueDate: dueDate || undefined,
+        supplierName: supplierName || undefined,
+        invoiceNumber: invoiceNumber || undefined,
+        receiptNumber: receiptNumber || undefined,
+        notes: notes || undefined,
+        file: file || undefined,
+      })
+    } else {
+      toast.error('Please fix all validation errors')
+    }
+  }
+
   return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-4">
+    <div className="space-y-6">
+      {/* Header Section */}
+      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/30 dark:to-indigo-950/30 -mx-6 -mt-6 p-6 rounded-t-lg border-b">
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
+            <Receipt className="size-5 text-blue-600 dark:text-blue-400" />
+          </div>
+          <div>
+            <h3 className="font-semibold text-lg">
+              {initial ? 'Edit Expense' : 'New Expense Record'}
+            </h3>
+            <p className="text-sm text-muted-foreground">
+              {initial ? 'Update the expense details below' : 'Fill in the details to record a new expense'}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Two Column Layout */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Category */}
         <div className="space-y-2">
-          <Label>Category *</Label>
-          <Select value={category} onValueChange={(v: ExpenseCategory) => setCategory(v)}>
-            <SelectTrigger className="w-full">
-              <SelectValue />
+          <Label className="text-sm font-medium flex items-center gap-1">
+            Category <span className="text-red-500">*</span>
+          </Label>
+          <Select 
+            value={category} 
+            onValueChange={(v: ExpenseCategory) => {
+              setCategory(v)
+              clearError('category')
+            }}
+          >
+            <SelectTrigger className={`w-full h-11 ${errors.category ? 'border-red-500 focus:ring-red-500' : ''}`}>
+              <SelectValue placeholder="Select category" />
             </SelectTrigger>
             <SelectContent>
               {categoryOptions.map((opt) => (
                 <SelectItem key={opt.value} value={opt.value}>
-                  <div className="flex items-center gap-2">
-                    <opt.icon className="size-4" />
-                    {opt.label}
+                  <div className="flex items-center gap-3">
+                    <opt.icon className={`size-4 ${opt.color}`} />
+                    <span>{opt.label}</span>
                   </div>
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
+          {errors.category && (
+            <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
+              <AlertCircle className="size-3" />
+              {errors.category}
+            </p>
+          )}
         </div>
 
+        {/* Payment Method */}
         <div className="space-y-2">
-          <Label>Payment Method *</Label>
-          <Select value={paymentMethod} onValueChange={(v: PaymentMethod) => setPaymentMethod(v)}>
-            <SelectTrigger className="w-full">
-              <SelectValue />
+          <Label className="text-sm font-medium flex items-center gap-1">
+            Payment Method <span className="text-red-500">*</span>
+          </Label>
+          <Select 
+            value={paymentMethod} 
+            onValueChange={(v: PaymentMethod) => {
+              setPaymentMethod(v)
+              clearError('paymentMethod')
+            }}
+          >
+            <SelectTrigger className={`w-full h-11 ${errors.paymentMethod ? 'border-red-500 focus:ring-red-500' : ''}`}>
+              <SelectValue placeholder="Select payment method" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="cash">Cash</SelectItem>
-              <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
-              <SelectItem value="mobile_money">Mobile Money</SelectItem>
-              <SelectItem value="cheque">Cheque</SelectItem>
+              <SelectItem value="cash">
+                <div className="flex items-center gap-2">
+                  <DollarSign className="size-4 text-green-500" />
+                  Cash
+                </div>
+              </SelectItem>
+              <SelectItem value="bank_transfer">
+                <div className="flex items-center gap-2">
+                  <Building className="size-4 text-blue-500" />
+                  Bank Transfer
+                </div>
+              </SelectItem>
+              <SelectItem value="mobile_money">
+                <div className="flex items-center gap-2">
+                  <CreditCard className="size-4 text-purple-500" />
+                  Mobile Money
+                </div>
+              </SelectItem>
+              <SelectItem value="cheque">
+                <div className="flex items-center gap-2">
+                  <FileText className="size-4 text-orange-500" />
+                  Cheque
+                </div>
+              </SelectItem>
             </SelectContent>
           </Select>
+          {errors.paymentMethod && (
+            <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
+              <AlertCircle className="size-3" />
+              {errors.paymentMethod}
+            </p>
+          )}
         </div>
       </div>
 
+      {/* Title - Full Width */}
       <div className="space-y-2">
-        <Label>Title *</Label>
+        <Label className="text-sm font-medium flex items-center gap-1">
+          Title <span className="text-red-500">*</span>
+        </Label>
         <Input
-          placeholder="Expense title..."
+          placeholder="Enter expense title..."
           value={title}
-          onChange={(e) => setTitle(e.target.value)}
+          onChange={(e) => {
+            setTitle(e.target.value)
+            clearError('title')
+          }}
+          className={`h-11 ${errors.title ? 'border-red-500 focus:ring-red-500' : ''}`}
         />
+        {errors.title && (
+          <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
+            <AlertCircle className="size-3" />
+            {errors.title}
+          </p>
+        )}
       </div>
 
+      {/* Description - Full Width */}
       <div className="space-y-2">
-        <Label>Description</Label>
-        <Input
-          placeholder="Detailed description..."
+        <Label className="text-sm font-medium">Description</Label>
+        <Textarea
+          placeholder="Provide a detailed description of the expense..."
           value={description}
           onChange={(e) => setDescription(e.target.value)}
+          rows={2}
+          className="resize-none"
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      {/* Quantity & Unit Price */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="space-y-2">
-          <Label>Quantity</Label>
+          <Label className="text-sm font-medium">Quantity</Label>
           <Input
             type="text"
             inputMode="numeric"
             placeholder="0"
             value={quantity === 0 ? '' : quantity}
             onChange={handleQuantityChange}
+            className="h-11"
           />
         </div>
         <div className="space-y-2">
-          <Label>Unit Price</Label>
+          <Label className="text-sm font-medium">Unit Price</Label>
           <Input
             type="text"
             inputMode="decimal"
             placeholder="0.00"
             value={unitPrice === 0 ? '' : unitPrice}
             onChange={handleUnitPriceChange}
+            className="h-11"
           />
         </div>
       </div>
 
+      {/* Amount */}
       <div className="space-y-2">
-        <Label>Amount *</Label>
-        <Input
-          type="text"
-          inputMode="decimal"
-          placeholder="0.00"
-          value={amount === 0 ? '' : amount}
-          onChange={handleNumberChange(setAmount)}
-        />
+        <Label className="text-sm font-medium flex items-center gap-1">
+          Amount <span className="text-red-500">*</span>
+        </Label>
+        <div className="relative">
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground font-medium">$</span>
+          <Input
+            type="text"
+            inputMode="decimal"
+            placeholder="0.00"
+            value={amount === 0 ? '' : amount}
+            onChange={handleNumberChange(setAmount)}
+            className={`h-11 pl-8 ${errors.amount ? 'border-red-500 focus:ring-red-500' : ''}`}
+          />
+        </div>
+        {errors.amount && (
+          <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
+            <AlertCircle className="size-3" />
+            {errors.amount}
+          </p>
+        )}
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      {/* Dates */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="space-y-2">
-          <Label>Expense Date *</Label>
-          <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+          <Label className="text-sm font-medium flex items-center gap-1">
+            Expense Date <span className="text-red-500">*</span>
+          </Label>
+          <Input 
+            type="date" 
+            value={date} 
+            onChange={(e) => {
+              setDate(e.target.value)
+              clearError('date')
+            }}
+            className={`h-11 ${errors.date ? 'border-red-500 focus:ring-red-500' : ''}`}
+          />
+          {errors.date && (
+            <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
+              <AlertCircle className="size-3" />
+              {errors.date}
+            </p>
+          )}
         </div>
         <div className="space-y-2">
-          <Label>Due Date (if applicable)</Label>
-          <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+          <Label className="text-sm font-medium">Due Date</Label>
+          <Input 
+            type="date" 
+            value={dueDate} 
+            onChange={(e) => setDueDate(e.target.value)} 
+            className="h-11"
+          />
         </div>
       </div>
 
+      {/* Supplier */}
       {(category === "supplier" || supplierName) && (
         <div className="space-y-2">
-          <Label>Supplier Name</Label>
+          <Label className="text-sm font-medium">Supplier Name</Label>
           <Input
-            placeholder="Supplier name"
+            placeholder="Enter supplier name..."
             value={supplierName}
             onChange={(e) => setSupplierName(e.target.value)}
+            className="h-11"
           />
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-4">
+      {/* Invoice & Receipt Numbers */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="space-y-2">
-          <Label>Invoice Number</Label>
+          <Label className="text-sm font-medium">Invoice Number</Label>
           <Input
             placeholder="INV-XXX"
             value={invoiceNumber}
             onChange={(e) => setInvoiceNumber(e.target.value)}
+            className="h-11"
           />
         </div>
         <div className="space-y-2">
-          <Label>Receipt Number</Label>
+          <Label className="text-sm font-medium">Receipt Number</Label>
           <Input
             placeholder="RCP-XXX"
             value={receiptNumber}
             onChange={(e) => setReceiptNumber(e.target.value)}
+            className="h-11"
           />
         </div>
       </div>
 
+      {/* Notes */}
       <div className="space-y-2">
-        <Label>Notes</Label>
+        <Label className="text-sm font-medium">Notes</Label>
         <Textarea
-          placeholder="Additional notes..."
+          placeholder="Add any additional notes or comments..."
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
           rows={3}
+          className="resize-none"
         />
       </div>
 
-      <div className="flex gap-2 justify-end">
-        <Button variant="outline" onClick={onCancel} disabled={isLoading}>
+      {/* File Upload */}
+      <div className="space-y-2">
+        <Label className="text-sm font-medium">Receipt / Attachment</Label>
+        <div
+          className={`relative border-2 border-dashed rounded-xl transition-all duration-200 ${
+            dragActive 
+              ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/20' 
+              : file 
+                ? 'border-green-500 bg-green-50 dark:bg-green-950/20' 
+                : errors.file
+                  ? 'border-red-500 bg-red-50 dark:bg-red-950/10'
+                  : 'border-gray-300 dark:border-gray-700 hover:border-gray-400 dark:hover:border-gray-600'
+          }`}
+          onDragEnter={handleDrag}
+          onDragLeave={handleDrag}
+          onDragOver={handleDrag}
+          onDrop={handleDrop}
+        >
+          {file ? (
+            // File preview when uploaded
+            <div className="p-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-green-100 dark:bg-green-900/30 rounded-lg text-2xl">
+                  {getFileIcon(file.name)}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">{file.name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {(file.size / 1024).toFixed(0)} KB
+                  </p>
+                </div>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  removeFile()
+                }}
+                className="text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/20"
+              >
+                <X className="size-4" />
+              </Button>
+            </div>
+          ) : (
+            // Upload area
+            <div className="p-8 text-center">
+              <div className="flex justify-center mb-3">
+                <div className={`p-3 rounded-full ${errors.file ? 'bg-red-50 dark:bg-red-950/20' : 'bg-blue-50 dark:bg-blue-950/30'}`}>
+                  <UploadCloud className={`size-8 ${errors.file ? 'text-red-500' : 'text-blue-500'}`} />
+                </div>
+              </div>
+              <p className="text-sm font-medium text-muted-foreground">
+                Drag and drop your file here
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                or click to browse
+              </p>
+              <p className="text-xs text-muted-foreground mt-2">
+                Supported: JPG, PNG, PDF, DOC, DOCX (Max 5MB)
+              </p>
+            </div>
+          )}
+          <Input
+            type="file"
+            accept="image/*,.pdf,.doc,.docx"
+            onChange={handleFileChange}
+            className="absolute inset-0 opacity-0 cursor-pointer h-full w-full"
+          />
+        </div>
+        {errors.file && (
+          <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
+            <AlertCircle className="size-3" />
+            {errors.file}
+          </p>
+        )}
+      </div>
+
+      {/* Form Actions */}
+      <div className="flex items-center justify-end gap-3 pt-4 border-t">
+        <Button 
+          variant="outline" 
+          onClick={onCancel} 
+          disabled={isLoading}
+          className="h-11 px-6"
+        >
           Cancel
         </Button>
-        <Button onClick={() => onSubmit({
-          title,
-          description,
-          category,
-          amount,
-          quantity: quantity > 1 ? quantity : undefined,
-          unitPrice: unitPrice > 0 ? unitPrice : undefined,
-          paymentMethod,
-          date,
-          dueDate: dueDate || undefined,
-          supplierName: supplierName || undefined,
-          invoiceNumber: invoiceNumber || undefined,
-          receiptNumber: receiptNumber || undefined,
-          notes: notes || undefined,
-        })} disabled={isLoading}>
-          {isLoading ? "Saving..." : initial ? "Update Expense" : "Record Expense"}
+        <Button 
+          onClick={handleSubmit} 
+          disabled={isLoading}
+          className="h-11 px-8 bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 text-white"
+        >
+          {isLoading ? (
+            <>
+              <RefreshCw className="size-4 mr-2 animate-spin" />
+              Saving...
+            </>
+          ) : (
+            <>
+              {initial ? (
+                <>
+                  <Edit2 className="size-4 mr-2" />
+                  Update Expense
+                </>
+              ) : (
+                <>
+                  <Plus className="size-4 mr-2" />
+                  Record Expense
+                </>
+              )}
+            </>
+          )}
         </Button>
       </div>
     </div>
@@ -531,7 +905,7 @@ export default function ExpensesPage() {
   const [viewingExpense, setViewingExpense] = useState<Expense | null>(null)
   const [activeTab, setActiveTab] = useState("expenses")
 
-  // ✅ Fetch expenses from API on mount
+  // Fetch expenses from API on mount
   useEffect(() => {
     const fetchExpenses = async () => {
       setIsLoading(true)
@@ -668,7 +1042,7 @@ export default function ExpensesPage() {
     other: "#9ca3af",
   }
 
-  // ✅ Add expense with API
+  // Add expense with API - BASE64 SUPPORT
   const handleAddExpense = async (data: any) => {
     setIsSubmitting(true)
     try {
@@ -686,12 +1060,14 @@ export default function ExpensesPage() {
         invoiceNumber: data.invoiceNumber || "",
         receiptNumber: data.receiptNumber || "",
         notes: data.notes || "",
-        status: "paid",
+        status: "paid" as ExpenseStatus,
         recordedBy: currentUser?.name || "System",
         createdBy: currentUser?.name || "System",
       }
       
-      const newExpense: any = await expensesService.create(expenseData)
+      // Pass the file to service - it will convert to base64
+      const newExpense:any = await expensesService.create(expenseData, data.file)
+      
       setExpenses([{
         ...newExpense,
         paymentMethod: newExpense.paymentMethod || "cash"
@@ -708,8 +1084,7 @@ export default function ExpensesPage() {
     }
   }
 
-
-  // ✅ Update expense with API
+  // Update expense with API - BASE64 SUPPORT
   const handleUpdateExpense = async (data: any) => {
     if (!editingExpense) return
     
@@ -729,13 +1104,15 @@ export default function ExpensesPage() {
         invoiceNumber: data.invoiceNumber || "",
         receiptNumber: data.receiptNumber || "",
         notes: data.notes || "",
-        status: data.status || "paid",
+        status: data.status || "paid" as ExpenseStatus,
         recordedBy: currentUser?.name || "System",
         updatedBy: currentUser?.name || "System",
         updatedAt: new Date().toISOString(),
       }
       
-      const updatedExpense: any = await expensesService.update(editingExpense.id, updatedData)
+      // Pass the file to service - it will convert to base64
+      const updatedExpense:any = await expensesService.update(editingExpense.id, updatedData, data.file)
+      
       setExpenses(expenses.map(e => e.id === editingExpense.id ? {
         ...updatedExpense,
         paymentMethod: updatedExpense.paymentMethod || "cash"
@@ -752,7 +1129,7 @@ export default function ExpensesPage() {
     }
   }
 
-  // ✅ Delete expense with API
+  // Delete expense with API
   const handleDeleteExpense = async () => {
     if (!deletingExpense) return
     
@@ -1300,7 +1677,7 @@ export default function ExpensesPage() {
         </DialogContent>
       </Dialog>
 
-      {/* View Expense Dialog - FIXED */}
+      {/* View Expense Dialog */}
       <Dialog open={!!viewingExpense} onOpenChange={(o) => !o && setViewingExpense(null)}>
         <DialogContent>
           <DialogHeader>
@@ -1370,6 +1747,20 @@ export default function ExpensesPage() {
                   <>
                     <span className="text-muted-foreground">Recorded By:</span>
                     <span>{viewingExpense.recordedBy}</span>
+                  </>
+                )}
+                
+                {viewingExpense.receiptUrl && (
+                  <>
+                    <span className="text-muted-foreground">Receipt:</span>
+                    <a 
+                      href={viewingExpense.receiptUrl} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="text-blue-600 hover:underline"
+                    >
+                      View Receipt
+                    </a>
                   </>
                 )}
               </div>

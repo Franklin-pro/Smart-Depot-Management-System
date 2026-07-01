@@ -1,9 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { seedUsers } from '@/lib/mock-data';
+import { NextRequest, NextResponse } from 'next/server';  
 import type { User } from '@/lib/types';
 
 // In-memory storage (use database in production)
-let users = [...seedUsers];
+let users: User[] = [];
 
 // GET /api/users - Get all users
 export async function GET() {

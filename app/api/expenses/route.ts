@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { seedExpenses } from '@/lib/mock-data';
 import type { Expense } from '@/lib/types';
 
 // In-memory storage (use database in production)
-let expenses = [...seedExpenses];
+let expenses: Expense[] = [];
 
 // GET /api/expenses - Get all expenses
 export async function GET() {

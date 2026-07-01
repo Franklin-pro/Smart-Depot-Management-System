@@ -15,13 +15,71 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { AlertCircle, Package, Beer, TrendingUp, Split, Plus, Minus, Trash2 } from "lucide-react"
+import { AlertCircle, Package, Beer, TrendingUp, Split, Plus, Minus, Trash2, Wine } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Card } from "@/components/ui/card"
 import { toast } from "sonner"
 
-const categories = ["Lager", "Premium Lager", "Strong Lager", "Stout", "Ale", "Cider"]
-const BOTTLES_PER_CASE = 24
+const categories = ["Beer", "Liquor", "Wine"]
+
+// Container configuration based on category
+interface ContainerConfig {
+  type: "case" | "box"
+  defaultBottlesPerContainer: number
+  containerLabel: string
+  allowSizeCustomization: boolean
+  sizeOptions?: { label: string; bottles: number }[]
+}
+
+const getContainerConfig = (category: string): ContainerConfig => {
+  switch (category) {
+    case "Liquor":
+      return {
+        type: "box",
+        defaultBottlesPerContainer: 12,
+        containerLabel: "Box",
+        allowSizeCustomization: true,
+        sizeOptions: [
+          { label: "Small Box", bottles: 6 },
+          { label: "Standard Box", bottles: 12 },
+          { label: "Large Box", bottles: 18 },
+          { label: "Custom", bottles: 0 },
+        ]
+      }
+    case "Beer":
+      return {
+        type: "case",
+        defaultBottlesPerContainer: 24,
+        containerLabel: "Case",
+        allowSizeCustomization: true,
+        sizeOptions: [
+          { label: "6-pack", bottles: 6 },
+          { label: "12-pack", bottles: 12 },
+          { label: "24-pack", bottles: 24 },
+          { label: "Custom", bottles: 0 },
+        ]
+      }
+    case "Wine":
+      return {
+        type: "case",
+        defaultBottlesPerContainer: 12,
+        containerLabel: "Case",
+        allowSizeCustomization: true,
+        sizeOptions: [
+          { label: "6-bottle Case", bottles: 6 },
+          { label: "12-bottle Case", bottles: 12 },
+          { label: "Custom", bottles: 0 },
+        ]
+      }
+    default:
+      return {
+        type: "case",
+        defaultBottlesPerContainer: 24,
+        containerLabel: "Case",
+        allowSizeCustomization: false,
+      }
+  }
+}
 
 export interface BottleInfo {
   damaged: number
@@ -35,23 +93,27 @@ export interface PartialCase {
   productId?: string
   bottleCount: number
   openedDate: Date
-  reason: "sold_individual" | "broken_case" | "sample" | "other"
+  reason: "sold_individual" | "broken_container" | "sample" | "other"
   notes?: string
+  containerType?: "case" | "box"
+  sizeLabel?: string
 }
 
 export type ProductFormValues = Omit<Product, "id" | "createdAt" | "updatedAt"> & {
   bottleInfo?: BottleInfo
   partialCases?: PartialCase[]
   lastStockCheck?: Date
+  containerType?: "case" | "box"
+  bottlesPerContainer?: number
+  containerSizeLabel?: string
+  purchasePricePerContainer?: number 
+  sellingPricePerContainer?: number
 }
 
 // Helper function to clean number input
 const cleanNumberInput = (value: string): string => {
-  // Remove leading zeros (but keep single zero if it's the only character)
   let cleaned = value.replace(/^0+(?=\d)/, '')
-  // Remove non-numeric characters except decimal point
   cleaned = cleaned.replace(/[^0-9.]/g, '')
-  // Prevent multiple decimal points
   const parts = cleaned.split('.')
   if (parts.length > 2) {
     cleaned = parts[0] + '.' + parts.slice(1).join('')
@@ -107,16 +169,21 @@ export function ProductForm({
   const [newPartialCaseBottles, setNewPartialCaseBottles] = useState(12)
   const [newPartialCaseReason, setNewPartialCaseReason] = useState<PartialCase["reason"]>("sold_individual")
   const [newPartialCaseNotes, setNewPartialCaseNotes] = useState("")
+  const [selectedSizeLabel, setSelectedSizeLabel] = useState<string>("Standard Box")
+  const [isCustomBottleCount, setIsCustomBottleCount] = useState(false)
+  const [customBottleCount, setCustomBottleCount] = useState<number>(24)
   
   // Initialize form state with proper defaults
   const [v, setV] = useState<ProductFormValues>(() => ({
     name: initial?.name ?? "",
     brand: initial?.brand ?? "",
-    category: initial?.category ?? "Lager",
+    category: initial?.category ?? "Beer",
     fullCases: initial?.fullCases ?? 0,
     emptyCases: initial?.emptyCases ?? 0,
     purchasePrice: initial?.purchasePrice ?? 0,
     sellingPrice: initial?.sellingPrice ?? 0,
+    purchasePricePerContainer: (initial as any)?.purchasePricePerContainer ?? 0,
+    sellingPricePerContainer: (initial as any)?.sellingPricePerContainer ?? 0,
     supplier: initial?.supplier ?? suppliers[0]?.name ?? "",
     batchNumber: initial?.batchNumber ?? "",
     manufactureDate: initial?.manufactureDate ?? new Date().toISOString(),
@@ -131,12 +198,68 @@ export function ProductForm({
     },
     partialCases: (initial as any)?.partialCases ?? [],
     lastStockCheck: (initial as any)?.lastStockCheck ?? new Date(),
+    containerType: (initial as any)?.containerType ?? "case",
+    bottlesPerContainer: (initial as any)?.bottlesPerContainer ?? 24,
+    containerSizeLabel: (initial as any)?.containerSizeLabel ?? "Standard",
   }))
 
-  // Calculate derived values
-  const totalFromFullCases = v.fullCases * BOTTLES_PER_CASE
-  const totalFromPartialCases = (v.partialCases || []).reduce((sum, pc) => sum + pc.bottleCount, 0)
-  const totalCapacity = totalFromFullCases + totalFromPartialCases
+  // Get current container configuration based on category
+  const containerConfig = getContainerConfig(v.category)
+  
+  // Get current size options and selected size
+  const sizeOptions = containerConfig.sizeOptions || []
+  const currentSize = sizeOptions.find(opt => opt.label === selectedSizeLabel)
+  
+  // FIXED: Get bottlesPerContainer with fallback
+  const BOTTLES_PER_CONTAINER = v.bottlesPerContainer ?? 24
+
+  // Update bottlesPerContainer when category or size changes
+  useEffect(() => {
+    const config = getContainerConfig(v.category)
+    
+    if (config.allowSizeCustomization && sizeOptions.length > 0) {
+      const matchingSize = sizeOptions.find(opt => opt.label === selectedSizeLabel)
+      if (matchingSize && matchingSize.bottles > 0) {
+        setV(prev => ({
+          ...prev,
+          containerType: config.type,
+          bottlesPerContainer: matchingSize.bottles,
+          containerSizeLabel: matchingSize.label
+        }))
+        setIsCustomBottleCount(false)
+      } else if (matchingSize && matchingSize.bottles === 0) {
+        setIsCustomBottleCount(true)
+        setV(prev => ({
+          ...prev,
+          containerType: config.type,
+          bottlesPerContainer: customBottleCount || config.defaultBottlesPerContainer,
+          containerSizeLabel: "Custom"
+        }))
+      } else {
+        setV(prev => ({
+          ...prev,
+          containerType: config.type,
+          bottlesPerContainer: config.defaultBottlesPerContainer,
+          containerSizeLabel: "Standard"
+        }))
+        setSelectedSizeLabel("Standard")
+        setIsCustomBottleCount(false)
+      }
+    } else {
+      setV(prev => ({
+        ...prev,
+        containerType: config.type,
+        bottlesPerContainer: config.defaultBottlesPerContainer,
+        containerSizeLabel: "Standard"
+      }))
+      setIsCustomBottleCount(false)
+    }
+  }, [v.category, selectedSizeLabel, customBottleCount, sizeOptions])
+
+  // Calculate derived values - FIXED: Use BOTTLES_PER_CONTAINER with fallback
+  const totalFromFullContainers = v.fullCases * BOTTLES_PER_CONTAINER
+  const totalFromPartialContainers = (v.partialCases || []).reduce((sum, pc) => sum + pc.bottleCount, 0)
+  const totalCapacity = totalFromFullContainers + totalFromPartialContainers
   const missingBottles = v.bottleInfo?.missing || 0
   const damagedBottles = v.bottleInfo?.damaged || 0
   const returnedBottles = v.bottleInfo?.returned || 0
@@ -146,6 +269,28 @@ export function ProductForm({
     : 100
   const hasIssues = missingBottles > 0 || damagedBottles > 0
   const hasPartialCases = (v.partialCases || []).length > 0
+
+  // Get safe price values (default to 0 if undefined)
+  const purchasePricePerContainer = v.purchasePricePerContainer ?? 0
+  const sellingPricePerContainer = v.sellingPricePerContainer ?? 0
+
+  // Calculate per-bottle prices (for informational display only)
+  const purchasePricePerBottle = BOTTLES_PER_CONTAINER > 0 
+    ? purchasePricePerContainer / BOTTLES_PER_CONTAINER 
+    : 0
+  const sellingPricePerBottle = BOTTLES_PER_CONTAINER > 0 
+    ? sellingPricePerContainer / BOTTLES_PER_CONTAINER 
+    : 0
+
+  // Profit margin per bottle
+  const profitMarginPerBottle = sellingPricePerBottle > 0 && purchasePricePerBottle > 0
+    ? ((sellingPricePerBottle - purchasePricePerBottle) / purchasePricePerBottle) * 100
+    : 0
+
+  // Profit margin per container
+  const profitMarginPerContainer = sellingPricePerContainer > 0 && purchasePricePerContainer > 0
+    ? ((sellingPricePerContainer - purchasePricePerContainer) / purchasePricePerContainer) * 100
+    : 0
 
   // Auto-show sections if there are issues
   useEffect(() => {
@@ -195,14 +340,13 @@ export function ProductForm({
   }
 
   function addPartialCase() {
-    if (newPartialCaseBottles <= 0 || newPartialCaseBottles >= BOTTLES_PER_CASE) {
-      toast.error(`Bottle count must be between 1 and ${BOTTLES_PER_CASE - 1}`)
+    if (newPartialCaseBottles <= 0 || newPartialCaseBottles >= BOTTLES_PER_CONTAINER) {
+      toast.error(`Bottle count must be between 1 and ${BOTTLES_PER_CONTAINER - 1}`)
       return
     }
 
-    // Check if we have full cases to open
     if (v.fullCases === 0 && (v.partialCases || []).length === 0) {
-      setErrors(prev => ({ ...prev, partialCases: "No full cases available to open. Please add stock first." }))
+      setErrors(prev => ({ ...prev, partialCases: `No full ${containerConfig.containerLabel.toLowerCase()}s available to open. Please add stock first.` }))
       return
     }
 
@@ -212,16 +356,17 @@ export function ProductForm({
       openedDate: new Date(),
       reason: newPartialCaseReason,
       notes: newPartialCaseNotes || undefined,
+      containerType: v.containerType,
+      sizeLabel: v.containerSizeLabel,
     }
 
     setV(prev => ({
       ...prev,
       partialCases: [...(prev.partialCases || []), newPartialCase],
-      fullCases: prev.fullCases - 1, // Reduce full cases by 1
+      fullCases: prev.fullCases - 1,
     }))
 
-    // Reset form
-    setNewPartialCaseBottles(12)
+    setNewPartialCaseBottles(Math.floor(BOTTLES_PER_CONTAINER / 2))
     setNewPartialCaseReason("sold_individual")
     setNewPartialCaseNotes("")
     setErrors(prev => {
@@ -242,7 +387,7 @@ export function ProductForm({
   }
 
   function updatePartialCaseBottles(id: string, newBottleCount: number) {
-    if (newBottleCount <= 0 || newBottleCount >= BOTTLES_PER_CASE) return
+    if (newBottleCount <= 0 || newBottleCount >= BOTTLES_PER_CONTAINER) return
     setV(prev => ({
       ...prev,
       partialCases: (prev.partialCases || []).map(pc =>
@@ -254,16 +399,17 @@ export function ProductForm({
   function validateForm(): boolean {
     const newErrors: Record<string, string> = {}
 
-    if (!v.name.trim()) newErrors.name = "Beer name is required"
+    if (!v.name.trim()) newErrors.name = "Product name is required"
     if (!v.brand.trim()) newErrors.brand = "Brand is required"
-    if (v.fullCases < 0) newErrors.fullCases = "Full cases cannot be negative"
-    if (v.emptyCases < 0) newErrors.emptyCases = "Empty cases cannot be negative"
-    if (v.purchasePrice < 0) newErrors.purchasePrice = "Purchase price cannot be negative"
-    if (v.sellingPrice < 0) newErrors.sellingPrice = "Selling price cannot be negative"
-    if (v.sellingPrice <= v.purchasePrice && v.sellingPrice > 0) {
-      newErrors.sellingPrice = "Selling price must be greater than purchase price"
+    if (v.fullCases < 0) newErrors.fullCases = `${containerConfig.containerLabel}s cannot be negative`
+    if (v.emptyCases < 0) newErrors.emptyCases = `Empty ${containerConfig.containerLabel}s cannot be negative`
+    if ((v.purchasePricePerContainer ?? 0) < 0) newErrors.purchasePricePerContainer = "Purchase price cannot be negative"
+    if ((v.sellingPricePerContainer ?? 0) < 0) newErrors.sellingPricePerContainer = "Selling price cannot be negative"
+    if ((v.sellingPricePerContainer ?? 0) <= (v.purchasePricePerContainer ?? 0) && (v.sellingPricePerContainer ?? 0) > 0) {
+      newErrors.sellingPricePerContainer = `Selling price per ${containerConfig.containerLabel.toLowerCase()} must be greater than purchase price`
     }
     if (!v.batchNumber.trim()) newErrors.batchNumber = "Batch number is required for tracking"
+    if (BOTTLES_PER_CONTAINER <= 0) newErrors.bottlesPerContainer = "Bottles per container must be greater than 0"
     
     if (missingBottles + damagedBottles > totalCapacity) {
       newErrors.bottles = "Missing and damaged bottles cannot exceed total capacity"
@@ -283,25 +429,71 @@ export function ProductForm({
     e.preventDefault()
     if (!validateForm()) return
 
+    // Calculate per-bottle prices for backward compatibility
+    const purchasePricePerBottle = BOTTLES_PER_CONTAINER > 0 
+      ? (v.purchasePricePerContainer ?? 0) / BOTTLES_PER_CONTAINER 
+      : 0
+    const sellingPricePerBottle = BOTTLES_PER_CONTAINER > 0 
+      ? (v.sellingPricePerContainer ?? 0) / BOTTLES_PER_CONTAINER 
+      : 0
+
     onSubmit({
       ...v,
       manufactureDate: new Date(v.manufactureDate).toISOString(),
       expiryDate: new Date(v.expiryDate).toISOString(),
       lastStockCheck: new Date(),
+      bottlesPerContainer: BOTTLES_PER_CONTAINER,
+      purchasePrice: purchasePricePerBottle,
+      sellingPrice: sellingPricePerBottle,
     })
   }
-
-  const profitMargin = v.sellingPrice > 0 && v.purchasePrice > 0
-    ? ((v.sellingPrice - v.purchasePrice) / v.purchasePrice) * 100
-    : 0
 
   const getReasonLabel = (reason: string) => {
     switch (reason) {
       case "sold_individual": return "Individual Sales"
-      case "broken_case": return "Broken Case"
+      case "broken_container": return `Broken ${containerConfig.containerLabel}`
       case "sample": return "Sampling"
       default: return "Other"
     }
+  }
+
+  const getContainerIcon = () => {
+    switch (v.category) {
+      case "Liquor": return <Wine className="size-4" />
+      case "Beer": return <Beer className="size-4" />
+      case "Wine": return <Wine className="size-4" />
+      default: return <Package className="size-4" />
+    }
+  }
+
+  const handleSizeChange = (label: string) => {
+    setSelectedSizeLabel(label)
+    const selectedOption = sizeOptions.find(opt => opt.label === label)
+    if (selectedOption && selectedOption.bottles > 0) {
+      setIsCustomBottleCount(false)
+      setV(prev => ({
+        ...prev,
+        bottlesPerContainer: selectedOption.bottles,
+        containerSizeLabel: label
+      }))
+    } else if (selectedOption && selectedOption.bottles === 0) {
+      setIsCustomBottleCount(true)
+      const currentBottles = customBottleCount || containerConfig.defaultBottlesPerContainer
+      setV(prev => ({
+        ...prev,
+        bottlesPerContainer: currentBottles,
+        containerSizeLabel: "Custom"
+      }))
+    }
+  }
+
+  const handleCustomBottleChange = (value: number) => {
+    setCustomBottleCount(value)
+    setV(prev => ({
+      ...prev,
+      bottlesPerContainer: value,
+      containerSizeLabel: "Custom"
+    }))
   }
 
   return (
@@ -311,7 +503,7 @@ export function ProductForm({
         <h3 className="text-lg font-semibold">Basic Information</h3>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div className="flex w-full flex-col gap-2">
-            <Label htmlFor="name">Beer name *</Label>
+            <Label htmlFor="name">Product Name *</Label>
             <Input 
               id="name" 
               value={v.name} 
@@ -369,9 +561,77 @@ export function ProductForm({
       {/* Stock Information Section */}
       <div className="space-y-4">
         <h3 className="text-lg font-semibold">Stock Information</h3>
+        
+        {/* Category-specific container configuration */}
+        <div className="rounded-md bg-blue-50 p-3 mb-2">
+          <div className="flex items-center gap-2 text-sm text-blue-900">
+            {getContainerIcon()}
+            <span className="font-medium">
+              {v.category} Configuration
+            </span>
+            <Badge variant="outline" className="ml-auto bg-blue-100">
+              {containerConfig.type === "box" ? "Box" : "Case"}
+            </Badge>
+          </div>
+          
+          <div className="mt-2 space-y-2">
+            {containerConfig.allowSizeCustomization && sizeOptions.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs text-blue-700 font-medium">Container Size:</span>
+                <Select value={selectedSizeLabel} onValueChange={handleSizeChange}>
+                  <SelectTrigger className="w-[180px] h-8 text-sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {sizeOptions.map((option) => (
+                      <SelectItem key={option.label} value={option.label}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                
+                {isCustomBottleCount && (
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="text"
+                      inputMode="numeric"
+                      placeholder="Enter bottles"
+                      value={customBottleCount === 0 ? '' : customBottleCount}
+                      onChange={(e) => {
+                        const cleaned = cleanNumberInput(e.target.value)
+                        const num = parseInt(cleaned)
+                        if (!isNaN(num) && num > 0) {
+                          handleCustomBottleChange(num)
+                        } else if (e.target.value === '') {
+                          handleCustomBottleChange(0)
+                        }
+                      }}
+                      className="w-[120px] h-8 text-sm"
+                    />
+                    <span className="text-xs text-blue-700">bottles</span>
+                  </div>
+                )}
+              </div>
+            )}
+            
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-blue-700">
+                {BOTTLES_PER_CONTAINER} bottles per {containerConfig.containerLabel.toLowerCase()}
+                {v.containerSizeLabel && v.containerSizeLabel !== "Standard" && 
+                  ` (${v.containerSizeLabel})`
+                }
+              </span>
+              {errors.bottlesPerContainer && (
+                <span className="text-xs text-destructive">{errors.bottlesPerContainer}</span>
+              )}
+            </div>
+          </div>
+        </div>
+
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div className="flex w-full flex-col gap-2">
-            <Label htmlFor="full">Full cases ({BOTTLES_PER_CASE} bottles each) *</Label>
+            <Label htmlFor="full">Full {containerConfig.containerLabel}s  *</Label>
             <Input
               id="full"
               type="text"
@@ -383,12 +643,12 @@ export function ProductForm({
             />
             {errors.fullCases && <p className="text-xs text-destructive">{errors.fullCases}</p>}
             <p className="text-xs text-muted-foreground">
-              {totalFromFullCases} bottles from full cases
+              {totalFromFullContainers} bottles from full {containerConfig.containerLabel.toLowerCase()}s
             </p>
           </div>
           
           <div className="flex w-full flex-col gap-2">
-            <Label htmlFor="empty">Empty cases</Label>
+            <Label htmlFor="empty">Empty {containerConfig.containerLabel}s</Label>
             <Input
               id="empty"
               type="text"
@@ -403,18 +663,18 @@ export function ProductForm({
           </div>
         </div>
 
-        {/* Partial Cases Section */}
+        {/* Partial Containers Section */}
         <div className="flex items-center justify-between">
           <button
             type="button"
             onClick={() => setShowPartialCases(!showPartialCases)}
             className="text-sm text-primary hover:underline flex items-center gap-1"
           >
-            {showPartialCases ? "− Hide partial cases" : "+ Add partial cases"}
+            {showPartialCases ? "− Hide partial containers" : "+ Add partial containers"}
           </button>
           {hasPartialCases && (
             <Badge variant="outline" className="bg-orange-50">
-              {(v.partialCases || []).length} open case(s)
+              {(v.partialCases || []).length} open {containerConfig.containerLabel.toLowerCase()}(s)
             </Badge>
           )}
         </div>
@@ -423,13 +683,17 @@ export function ProductForm({
           <div className="rounded-lg border border-muted bg-muted/30 p-4 space-y-4">
             <div className="flex items-center gap-2">
               <Split className="size-4 text-orange-500" />
-              <h4 className="font-medium">Partial Cases (Opened Cases)</h4>
+              <h4 className="font-medium">Partial {containerConfig.containerLabel}s (Opened Containers)</h4>
+              {v.containerSizeLabel && v.containerSizeLabel !== "Standard" && (
+                <Badge variant="outline" className="ml-auto">
+                  {v.containerSizeLabel}
+                </Badge>
+              )}
             </div>
 
-            {/* Existing partial cases list */}
             {(v.partialCases || []).length > 0 && (
               <div className="space-y-2">
-                <Label>Current Open Cases</Label>
+                <Label>Current Open {containerConfig.containerLabel}s</Label>
                 {(v.partialCases || []).map(pc => (
                   <Card key={pc.id} className="p-3">
                     <div className="flex items-center justify-between">
@@ -439,6 +703,11 @@ export function ProductForm({
                           <Badge variant="secondary" className="text-xs">
                             {getReasonLabel(pc.reason)}
                           </Badge>
+                          {pc.sizeLabel && pc.sizeLabel !== "Standard" && (
+                            <Badge variant="outline" className="text-xs">
+                              {pc.sizeLabel}
+                            </Badge>
+                          )}
                         </div>
                         <p className="text-xs text-muted-foreground">
                           Opened: {new Date(pc.openedDate).toLocaleDateString()}
@@ -454,7 +723,7 @@ export function ProductForm({
                           onChange={(e) => {
                             const cleaned = cleanNumberInput(e.target.value)
                             const num = parseInt(cleaned)
-                            if (!isNaN(num) && num > 0 && num < BOTTLES_PER_CASE) {
+                            if (!isNaN(num) && num > 0 && num < BOTTLES_PER_CONTAINER) {
                               updatePartialCaseBottles(pc.id, num)
                             }
                           }}
@@ -476,28 +745,27 @@ export function ProductForm({
               </div>
             )}
 
-            {/* Add new partial case */}
             <div className="border-t pt-4">
-              <Label className="mb-2 block">Open New Case</Label>
+              <Label className="mb-2 block">Open New {containerConfig.containerLabel}</Label>
               <div className="grid gap-3 sm:grid-cols-3">
                 <div>
                   <Input
                     type="text"
                     inputMode="numeric"
-                    placeholder="12"
+                    placeholder={Math.floor(BOTTLES_PER_CONTAINER / 2).toString()}
                     value={newPartialCaseBottles === 0 ? '' : newPartialCaseBottles}
                     onChange={(e) => {
                       const cleaned = cleanNumberInput(e.target.value)
                       const num = parseInt(cleaned)
                       if (!isNaN(num)) {
-                        setNewPartialCaseBottles(Math.min(BOTTLES_PER_CASE - 1, Math.max(1, num)))
+                        setNewPartialCaseBottles(Math.min(BOTTLES_PER_CONTAINER - 1, Math.max(1, num)))
                       } else {
                         setNewPartialCaseBottles(0)
                       }
                     }}
                   />
                   <p className="text-xs text-muted-foreground mt-1">
-                    Bottles (1-{BOTTLES_PER_CASE - 1})
+                    Bottles (1-{BOTTLES_PER_CONTAINER - 1})
                   </p>
                 </div>
                 <div>
@@ -507,7 +775,7 @@ export function ProductForm({
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="sold_individual">Individual Sales</SelectItem>
-                      <SelectItem value="broken_case">Broken Case</SelectItem>
+                      <SelectItem value="broken_container">Broken {containerConfig.containerLabel}</SelectItem>
                       <SelectItem value="sample">Sampling</SelectItem>
                       <SelectItem value="other">Other</SelectItem>
                     </SelectContent>
@@ -529,26 +797,25 @@ export function ProductForm({
                 className="mt-3"
               >
                 <Plus className="size-4 mr-1" />
-                Open Case (uses 1 full case)
+                Open {containerConfig.containerLabel} (uses 1 full {containerConfig.containerLabel.toLowerCase()})
               </Button>
               {errors.partialCases && (
                 <p className="text-xs text-destructive mt-2">{errors.partialCases}</p>
               )}
             </div>
 
-            {/* Summary of partial cases */}
             <div className="rounded-md bg-background p-3">
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div>
-                  <div className="text-muted-foreground">From Partial Cases</div>
+                  <div className="text-muted-foreground">From Partial {containerConfig.containerLabel}s</div>
                   <div className="font-semibold text-orange-600">
-                    {totalFromPartialCases} bottles
+                    {totalFromPartialContainers} bottles
                   </div>
                 </div>
                 <div>
                   <div className="text-muted-foreground">Total Sellable</div>
                   <div className="font-semibold text-green-600">
-                    {totalFromFullCases + totalFromPartialCases} bottles
+                    {totalFromFullContainers + totalFromPartialContainers} bottles
                   </div>
                 </div>
               </div>
@@ -573,7 +840,6 @@ export function ProductForm({
           )}
         </div>
 
-        {/* Bottle Tracking Section */}
         {showBottleTracking && (
           <div className="rounded-lg border border-muted bg-muted/30 p-4 space-y-4">
             <div className="flex items-center gap-2">
@@ -639,7 +905,6 @@ export function ProductForm({
               />
             </div>
 
-            {/* Stock Summary */}
             <div className="rounded-md bg-background p-3">
               <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
                 <div>
@@ -676,36 +941,45 @@ export function ProductForm({
         )}
       </div>
 
-      {/* Pricing Section */}
+      {/* Pricing Section - Per Container */}
       <div className="space-y-4">
         <h3 className="text-lg font-semibold">Pricing</h3>
+        
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div className="flex w-full flex-col gap-2">
-            <Label htmlFor="purchase">Purchase price (RWF) *</Label>
+            <Label htmlFor="purchasePerContainer">
+              Purchase price per {containerConfig.containerLabel} (RWF) *
+            </Label>
             <Input
-              id="purchase"
+              id="purchasePerContainer"
               type="text"
               inputMode="decimal"
               placeholder="0"
-              value={v.purchasePrice === 0 ? '' : v.purchasePrice}
-              onChange={handleNumberChange((val) => set("purchasePrice", Math.max(0, val)))}
-              className={errors.purchasePrice ? "border-destructive" : ""}
+              value={(v.purchasePricePerContainer ?? 0) === 0 ? '' : v.purchasePricePerContainer}
+              onChange={handleNumberChange((val) => set("purchasePricePerContainer", Math.max(0, val)))}
+              className={errors.purchasePricePerContainer ? "border-destructive" : ""}
             />
-            {errors.purchasePrice && <p className="text-xs text-destructive">{errors.purchasePrice}</p>}
+            {errors.purchasePricePerContainer && (
+              <p className="text-xs text-destructive">{errors.purchasePricePerContainer}</p>
+            )}
           </div>
           
           <div className="flex w-full flex-col gap-2">
-            <Label htmlFor="selling">Selling price (RWF) *</Label>
+            <Label htmlFor="sellingPerContainer">
+              Selling price per {containerConfig.containerLabel} (RWF) *
+            </Label>
             <Input
-              id="selling"
+              id="sellingPerContainer"
               type="text"
               inputMode="decimal"
               placeholder="0"
-              value={v.sellingPrice === 0 ? '' : v.sellingPrice}
-              onChange={handleNumberChange((val) => set("sellingPrice", Math.max(0, val)))}
-              className={errors.sellingPrice ? "border-destructive" : ""}
+              value={(v.sellingPricePerContainer ?? 0) === 0 ? '' : v.sellingPricePerContainer}
+              onChange={handleNumberChange((val) => set("sellingPricePerContainer", Math.max(0, val)))}
+              className={errors.sellingPricePerContainer ? "border-destructive" : ""}
             />
-            {errors.sellingPrice && <p className="text-xs text-destructive">{errors.sellingPrice}</p>}
+            {errors.sellingPricePerContainer && (
+              <p className="text-xs text-destructive">{errors.sellingPricePerContainer}</p>
+            )}
           </div>
           
           <div className="flex w-full flex-col gap-2">
@@ -718,19 +992,24 @@ export function ProductForm({
               value={v.depositAmount === 0 ? '' : v.depositAmount}
               onChange={handleNumberChange((val) => set("depositAmount", Math.max(0, val)))}
             />
+            <p className="text-xs text-muted-foreground">
+              Per {containerConfig.containerLabel.toLowerCase()}
+            </p>
           </div>
         </div>
 
         {/* Profit Margin Display */}
-        {v.sellingPrice > 0 && v.purchasePrice > 0 && (
-          <div className="flex items-center gap-2 rounded-md bg-blue-50 p-3 text-sm">
-            <TrendingUp className="size-4 text-blue-600" />
-            <div>
-              <span className="font-medium text-blue-900">Profit Margin: </span>
-              <span className="text-blue-900">{profitMargin.toFixed(1)}%</span>
-              <span className="ml-2 text-blue-700">
-                ({formatCurrency(v.sellingPrice - v.purchasePrice)} per bottle)
-              </span>
+        {(v.sellingPricePerContainer ?? 0) > 0 && (v.purchasePricePerContainer ?? 0) > 0 && (
+          <div className="rounded-md bg-blue-50 p-3">
+            <div className="flex items-center gap-2 text-sm">
+              <TrendingUp className="size-4 text-blue-600" />
+              <div>
+                <span className="font-medium text-blue-900">Profit Margin: </span>
+                <span className="text-blue-900">{profitMarginPerContainer.toFixed(1)}%</span>
+                <span className="ml-2 text-blue-700">
+                  ({formatCurrency((v.sellingPricePerContainer ?? 0) - (v.purchasePricePerContainer ?? 0))} per {containerConfig.containerLabel.toLowerCase()})
+                </span>
+              </div>
             </div>
           </div>
         )}
@@ -753,7 +1032,7 @@ export function ProductForm({
           </div>
           
           <div className="flex w-full flex-col gap-2">
-            <Label htmlFor="threshold">Low stock threshold (cases)</Label>
+            <Label htmlFor="threshold">Low stock threshold ({containerConfig.containerLabel}s)</Label>
             <Input
               id="threshold"
               type="text"
@@ -763,7 +1042,7 @@ export function ProductForm({
               onChange={handleIntegerChange((val) => set("lowStockThreshold", Math.max(0, val)))}
             />
             <p className="text-xs text-muted-foreground">
-              Alert when stock falls below {v.lowStockThreshold} cases
+              Alert when stock falls below {v.lowStockThreshold} {containerConfig.containerLabel.toLowerCase()}s
             </p>
           </div>
           

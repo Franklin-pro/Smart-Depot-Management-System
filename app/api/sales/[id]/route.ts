@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { seedSales } from '@/lib/mock-data';
+import { Sale } from '@/lib/types';
 
 // In-memory storage (use database in production)
-let sales = [...seedSales];
+let sales: Sale[] = [];
 
 // GET /api/sales/[id] - Get a specific sale
 export async function GET(

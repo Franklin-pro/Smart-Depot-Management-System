@@ -2,6 +2,16 @@
 import { api } from '@/lib/api';
 import type { Expense } from '@/lib/types';
 
+// Helper function to convert file to base64
+const fileToBase64 = (file: File): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = (error) => reject(error);
+  });
+};
+
 export const expensesService = {
   // Get all expenses
   async getAll(): Promise<Expense[]> {
@@ -15,15 +25,37 @@ export const expensesService = {
     return response.data;
   },
 
-  // Create a new expense
-  async create(expense: Omit<Expense, 'id' | 'invoiceNumber'>): Promise<Expense> {
-    const response = await api.post('/expenses', expense);
+  // Create a new expense - WITH BASE64 SUPPORT
+  async create(expense: Omit<Expense, 'id' | 'invoiceNumber'>, file?: File): Promise<Expense> {
+    let expenseData: any = { ...expense };
+    
+    // If there's a file, convert to base64 and include in the payload
+    if (file) {
+      const base64String = await fileToBase64(file);
+      expenseData.receipt = base64String; // Backend will upload this to Cloudinary
+      expenseData.receiptFileName = file.name;
+      expenseData.receiptFileType = file.type;
+      expenseData.receiptFileSize = file.size;
+    }
+    
+    const response = await api.post('/expenses', expenseData);
     return response.data;
   },
 
-  // Update an expense
-  async update(id: string, expense: Partial<Expense>): Promise<Expense> {
-    const response = await api.patch(`/expenses/${id}`, expense);
+  // Update an expense - WITH BASE64 SUPPORT
+  async update(id: string, expense: Partial<Expense>, file?: File): Promise<Expense> {
+    let expenseData: any = { ...expense };
+    
+    // If there's a file, convert to base64 and include in the payload
+    if (file) {
+      const base64String = await fileToBase64(file);
+      expenseData.receipt = base64String; // Backend will upload this to Cloudinary
+      expenseData.receiptFileName = file.name;
+      expenseData.receiptFileType = file.type;
+      expenseData.receiptFileSize = file.size;
+    }
+    
+    const response = await api.patch(`/expenses/${id}`, expenseData);
     return response.data;
   },
 

@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { seedSales, seedProducts, seedCustomers } from '@/lib/mock-data';
 import type { Sale, SaleItem, Product, Customer } from '@/lib/types';
 
 // In-memory storage (use database in production)
-let sales = [...seedSales];
-let products = [...seedProducts];
-let customers = [...seedCustomers];
+let sales: Sale[] = [];
+let products: Product[] = [];
+let customers: Customer[] = [];
 
 // GET /api/sales - Get all sales
 export async function GET() {

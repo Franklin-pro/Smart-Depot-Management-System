@@ -31,13 +31,13 @@ const items = {
   dashboard: { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard, roles: ["owner", "manager", "storekeeper"] as ExtendedRole[] },
   inventory: { label: "Inventory", href: "/dashboard/inventory", icon: Package, roles: ["owner", "manager", "storekeeper"] as ExtendedRole[] },
   addStock: { label: "Add Stock", href: "/dashboard/inventory/add", icon: PlusCircle, roles: ["owner", "storekeeper"] as ExtendedRole[] },
-  pos: { label: "POS", href: "/dashboard/pos", icon: ShoppingCart, roles: ["cashier", "staff", "owner", "manager"] as ExtendedRole[] },
+  pos: { label: "POS", href: "/dashboard/pos", icon: ShoppingCart, roles: ["cashier", "staff", "manager"] as ExtendedRole[] },
   sales: { label: "Sales", href: "/dashboard/sales", icon: Receipt, roles: ["owner", "manager"] as ExtendedRole[] },
   salesReports: { label: "Sales Reports", href: "/dashboard/sales", icon: Receipt, roles: ["owner", "manager"] as ExtendedRole[] },
   salesHistory: { label: "Sales History", href: "/dashboard/sales", icon: History, roles: ["cashier", "staff", "owner", "manager"] as ExtendedRole[] },
   customers: { label: "Customers", href: "/dashboard/customers", icon: UserCircle, roles: ["cashier", "staff", "owner", "manager"] as ExtendedRole[] },
   receipts: { label: "Receipts", href: "/dashboard/receipts", icon: Receipt, roles: ["cashier", "staff", "owner", "manager"] as ExtendedRole[] },
-  expenses: { label: "Expenses", href: "/dashboard/expenses", icon: Wallet, roles: ["owner", "manager"] as ExtendedRole[] },
+  expenses: { label: "Expenses", href: "/dashboard/expenses", icon: Wallet, roles: ["owner", "manager","cashier"] as ExtendedRole[] },
   reports: { label: "Reports", href: "/dashboard/reports", icon: BarChart3, roles: ["owner", "manager"] as ExtendedRole[] },
   emptyCases: { label: "Empty Cases", href: "/dashboard/empty-case", icon: PackageOpen, roles: ["owner", "manager", "storekeeper"] as ExtendedRole[] },
   expiry: { label: "Expiry Tracking", href: "/dashboard/expiry", icon: CalendarClock, roles: ["owner", "manager", "storekeeper"] as ExtendedRole[] },
@@ -52,7 +52,7 @@ export const navByRole: Record<ExtendedRole, NavItem[]> = {
     items.dashboard,
     items.inventory,
     items.addStock,
-    items.pos,
+    // items.pos,
     items.sales,
     items.expenses,
     items.reports,
@@ -81,6 +81,7 @@ export const navByRole: Record<ExtendedRole, NavItem[]> = {
     items.customers,
     items.receipts,
     items.emptyCases,
+    items.expenses
   ],
   staff: [
     items.pos,
@@ -94,7 +95,7 @@ export const navByRole: Record<ExtendedRole, NavItem[]> = {
     items.addStock,
     items.emptyCases,
     items.expiry,
-    items.suppliers,
+    items.suppliers
   ],
   admin: [
     items.dashboard,

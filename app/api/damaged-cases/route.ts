@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { seedDamagedCases } from '@/lib/mock-data';
+
 import type { DamagedCase } from '@/lib/types';
 
 // In-memory storage (use database in production)
-let damagedCases = [...seedDamagedCases];
+let damagedCases: DamagedCase[] = [];
 
 // GET /api/damaged-cases - Get all damaged cases
 export async function GET() {

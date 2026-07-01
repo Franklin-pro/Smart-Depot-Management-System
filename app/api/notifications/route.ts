@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { seedNotifications } from '@/lib/mock-data';
 import type { AppNotification } from '@/lib/types';
 
 // In-memory storage (use database in production)
-let notifications = [...seedNotifications];
+let notifications: AppNotification[] = [];
 
 // GET /api/notifications - Get all notifications
 export async function GET() {

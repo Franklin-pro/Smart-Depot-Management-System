@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { seedEmptyCaseTransactions, seedCustomers, seedProducts } from '@/lib/mock-data';
-import type { EmptyCaseTransaction, TransactionAudit } from '@/lib/types';
+import type { Customer, EmptyCaseTransaction, Product, TransactionAudit } from '@/lib/types';
 
 // In-memory storage (use database in production)
-let transactions = [...seedEmptyCaseTransactions];
-let customers = [...seedCustomers];
-let products = [...seedProducts];
+let transactions: EmptyCaseTransaction[] = [];
+let customers: Customer[] = [];
+let products: Product[] = [];
 let audits: TransactionAudit[] = [];
 
 // POST /api/empty-case-transactions/[id]/process-return - Process empty case return

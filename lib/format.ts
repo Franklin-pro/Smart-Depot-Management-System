@@ -1,11 +1,18 @@
 import type { Product, StockStatus } from "./types"
 
 export function formatCurrency(amount: number) {
+  // Check if amount is valid
+  if (amount === undefined || amount === null || isNaN(amount)) {
+    return 'RWF 0'
+  }
+
+  // Format with RWF currency code
   return new Intl.NumberFormat("en-RW", {
     style: "currency",
     currency: "RWF",
+    currencyDisplay: "code", // This will show RWF instead of RF
     maximumFractionDigits: 0,
-  }).format(amount)
+  }).format(amount).replace('RWF', 'RWF ') // Ensure there's a space after RWF
 }
 
 export function formatNumber(n: number) {

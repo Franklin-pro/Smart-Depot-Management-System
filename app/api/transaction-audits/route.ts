@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { seedTransactionAudits } from '@/lib/mock-data';
+
 import type { TransactionAudit } from '@/lib/types';
 
 // In-memory storage (use database in production)
-let transactionAudits = [...seedTransactionAudits];
+let transactionAudits: TransactionAudit[] = [];
 
 // GET /api/transaction-audits - Get all transaction audits
 export async function GET() {

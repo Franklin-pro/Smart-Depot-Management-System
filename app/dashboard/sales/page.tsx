@@ -9,7 +9,7 @@ import {
   Calendar, DollarSign, TrendingUp, Users, Package, 
   ArrowLeft, RefreshCw, ChevronLeft, ChevronRight,
   CreditCard, Receipt, 
-  Percent,
+  Percent, Ban,
 } from "lucide-react"
 import { useApp } from "@/lib/store"
 import { formatCurrency, formatDate } from "@/lib/format"
@@ -609,6 +609,9 @@ export default function SalesPage() {
   const [query, setQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState<"all" | "completed" | "cancelled">("all")
   
+  // Check if current user is owner
+  const isOwner = currentUser?.role === "owner"
+
   // Get theme-aware chart colors
   const isDark = theme === 'dark'
   
@@ -961,242 +964,280 @@ export default function SalesPage() {
         {/* Main Content Tabs */}
         <Tabs defaultValue="pos" className="space-y-4">
           <TabsList className="flex-wrap h-auto">
-            <TabsTrigger value="pos">Point of Sale</TabsTrigger>
-            <TabsTrigger value="history">Sales History</TabsTrigger>
-            <TabsTrigger value="analytics">Analytics</TabsTrigger>
+            <TabsTrigger value="pos" disabled={isOwner}>
+              <div className="flex items-center gap-2">
+                <ShoppingCart className="size-4" />
+                Point of Sale
+                {isOwner && (
+                  <Badge variant="outline" className="text-xs ml-1 text-red-500 border-red-500">
+                    Locked
+                  </Badge>
+                )}
+              </div>
+            </TabsTrigger>
+            <TabsTrigger value="history">
+              <div className="flex items-center gap-2">
+                <FileText className="size-4" />
+                Sales History
+              </div>
+            </TabsTrigger>
+            <TabsTrigger value="analytics">
+              <div className="flex items-center gap-2">
+                <TrendingUp className="size-4" />
+                Analytics
+              </div>
+            </TabsTrigger>
           </TabsList>
           
-          {/* POS Tab */}
+          {/* POS Tab - Show access denied for owners */}
           <TabsContent value="pos" className="space-y-4">
-            <div className="grid gap-6 lg:grid-cols-3">
-              {/* Product Selection and Cart */}
-              <div className="lg:col-span-2 space-y-4">
-                {/* Cart Items */}
-                <Card className="overflow-hidden">
-                  <div className="p-4 border-b flex justify-between items-center">
-                    <h3 className="font-semibold flex items-center gap-2">
-                      <ShoppingCart className="size-4" />
-                      Current Sale ({cart.length} items)
-                    </h3>
-                    <div className="flex gap-2">
-                      <Dialog open={addItemOpen} onOpenChange={setAddItemOpen}>
-                        <DialogTrigger asChild>
-                          <Button size="sm">
-                            <Plus className="size-4 mr-1" />
-                            Add Item
-                          </Button>
-                        </DialogTrigger>
-                        <DialogContent>
-                          <DialogHeader>
-                            <DialogTitle>Add to Cart</DialogTitle>
-                            <DialogDescription>
-                              Select a product and quantity to add to the current sale
-                            </DialogDescription>
-                          </DialogHeader>
-                          <AddToCartForm 
-                            products={products.filter(p => p.fullCases > 0)}
-                            onAdd={handleAddToCart}
-                            onClose={() => setAddItemOpen(false)}
-                          />
-                        </DialogContent>
-                      </Dialog>
-                      
-                      {cart.length > 0 && (
-                        <Button variant="outline" size="sm" onClick={handleCancelSale}>
-                          Clear Cart
-                        </Button>
-                      )}
-                    </div>
+            {isOwner ? (
+              <Card className="p-8 text-center">
+                <div className="flex flex-col items-center gap-4">
+                  <div className="p-4 bg-red-100 dark:bg-red-900/20 rounded-full">
+                    <Ban className="size-12 text-red-600 dark:text-red-400" />
                   </div>
-                  
-                  <div className="overflow-x-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Product</TableHead>
-                          <TableHead className="text-right">Qty</TableHead>
-                          <TableHead className="text-right">Price</TableHead>
-                          <TableHead className="text-right">Total</TableHead>
-                          <TableHead className="text-right"></TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {cart.map((item) => (
-                          <TableRow key={item.productId}>
-                            <TableCell>
-                              <div className="flex flex-col">
-                                <span className="font-medium">{item.product.name}</span>
-                                <span className="text-xs text-muted-foreground">
-                                  {item.product.brand} · {item.product.batchNumber}
-                                </span>
-                              </div>
-                            </TableCell>
-                            <TableCell className="text-right">
-                              <div className="flex items-center justify-end gap-1">
-                                <Button
-                                  variant="outline"
-                                  size="icon"
-                                  className="size-7"
-                                  onClick={() => handleUpdateQuantity(item.productId, item.quantity - 1)}
-                                >
-                                  -
-                                </Button>
-                                <span className="w-12 text-center">{item.quantity}</span>
-                                <Button
-                                  variant="outline"
-                                  size="icon"
-                                  className="size-7"
-                                  onClick={() => handleUpdateQuantity(item.productId, item.quantity + 1)}
-                                >
-                                  +
-                                </Button>
-                              </div>
-                            </TableCell>
-                            <TableCell className="text-right">{formatCurrency(item.unitPrice)}</TableCell>
-                            <TableCell className="text-right font-medium">{formatCurrency(item.subtotal)}</TableCell>
-                            <TableCell className="text-right">
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="size-7 text-destructive"
-                                onClick={() => handleRemoveFromCart(item.productId)}
-                              >
-                                <Trash2 className="size-4" />
-                              </Button>
-                            </TableCell>
-                          </TableRow>
-                        ))}
+                  <h3 className="text-xl font-semibold text-red-600 dark:text-red-400">Access Denied</h3>
+                  <p className="text-muted-foreground max-w-md">
+                    Owners do not have permission to process sales. 
+                    Please switch to a cashier or manager account to use the Point of Sale.
+                  </p>
+                  <Badge variant="outline" className="mt-2">
+                    Current Role: {currentUser?.role}
+                  </Badge>
+                </div>
+              </Card>
+            ) : (
+              <div className="grid gap-6 lg:grid-cols-3">
+                {/* Product Selection and Cart */}
+                <div className="lg:col-span-2 space-y-4">
+                  {/* Cart Items */}
+                  <Card className="overflow-hidden">
+                    <div className="p-4 border-b flex justify-between items-center">
+                      <h3 className="font-semibold flex items-center gap-2">
+                        <ShoppingCart className="size-4" />
+                        Current Sale ({cart.length} items)
+                      </h3>
+                      <div className="flex gap-2">
+                        <Dialog open={addItemOpen} onOpenChange={setAddItemOpen}>
+                          <DialogTrigger asChild>
+                            <Button size="sm">
+                              <Plus className="size-4 mr-1" />
+                              Add Item
+                            </Button>
+                          </DialogTrigger>
+                          <DialogContent>
+                            <DialogHeader>
+                              <DialogTitle>Add to Cart</DialogTitle>
+                              <DialogDescription>
+                                Select a product and quantity to add to the current sale
+                              </DialogDescription>
+                            </DialogHeader>
+                            <AddToCartForm 
+                              products={products.filter(p => p.fullCases > 0)}
+                              onAdd={handleAddToCart}
+                              onClose={() => setAddItemOpen(false)}
+                            />
+                          </DialogContent>
+                        </Dialog>
                         
-                        {cart.length === 0 && (
-                          <TableRow>
-                            <TableCell colSpan={5} className="py-12 text-center">
-                              <ShoppingCart className="mx-auto size-8 text-muted-foreground" />
-                              <p className="mt-2 text-sm text-muted-foreground">
-                                Cart is empty. Add items to start a sale.
-                              </p>
-                              <Button 
-                                variant="link" 
-                                onClick={() => setAddItemOpen(true)}
-                                className="mt-2"
-                              >
-                                <Plus className="size-4 mr-1" />
-                                Add First Item
-                              </Button>
-                            </TableCell>
-                          </TableRow>
+                        {cart.length > 0 && (
+                          <Button variant="outline" size="sm" onClick={handleCancelSale}>
+                            Clear Cart
+                          </Button>
                         )}
-                      </TableBody>
-                    </Table>
-                  </div>
-                </Card>
-              </div>
-              
-              {/* Checkout Section */}
-              <div className="space-y-4">
-                <Card className="p-4">
-                  <h3 className="font-semibold mb-3">Sale Summary</h3>
-                  
-                  <div className="space-y-3">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Subtotal:</span>
-                      <span>{formatCurrency(subtotal)}</span>
+                      </div>
                     </div>
                     
-                    <div className="flex justify-between items-center">
-                      <span className="text-muted-foreground text-sm">Discount:</span>
-                      <div className="flex gap-2">
-                        <Select value={discountType} onValueChange={(v: any) => setDiscountType(v)}>
-                          <SelectTrigger className="w-24">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="fixed">Fixed</SelectItem>
-                            <SelectItem value="percentage">%</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <Input
-                          type="number"
-                          className="w-24"
-                          placeholder="0"
-                          value={discount}
-                          onChange={(e) => setDiscount(parseFloat(e.target.value) || 0)}
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Product</TableHead>
+                            <TableHead className="text-right">Qty</TableHead>
+                            <TableHead className="text-right">Price</TableHead>
+                            <TableHead className="text-right">Total</TableHead>
+                            <TableHead className="text-right"></TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {cart.map((item) => (
+                            <TableRow key={item.productId}>
+                              <TableCell>
+                                <div className="flex flex-col">
+                                  <span className="font-medium">{item.product.name}</span>
+                                  <span className="text-xs text-muted-foreground">
+                                    {item.product.brand} · {item.product.batchNumber}
+                                  </span>
+                                </div>
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <div className="flex items-center justify-end gap-1">
+                                  <Button
+                                    variant="outline"
+                                    size="icon"
+                                    className="size-7"
+                                    onClick={() => handleUpdateQuantity(item.productId, item.quantity - 1)}
+                                  >
+                                    -
+                                  </Button>
+                                  <span className="w-12 text-center">{item.quantity}</span>
+                                  <Button
+                                    variant="outline"
+                                    size="icon"
+                                    className="size-7"
+                                    onClick={() => handleUpdateQuantity(item.productId, item.quantity + 1)}
+                                  >
+                                    +
+                                  </Button>
+                                </div>
+                              </TableCell>
+                              <TableCell className="text-right">{formatCurrency(item.unitPrice)}</TableCell>
+                              <TableCell className="text-right font-medium">{formatCurrency(item.subtotal)}</TableCell>
+                              <TableCell className="text-right">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="size-7 text-destructive"
+                                  onClick={() => handleRemoveFromCart(item.productId)}
+                                >
+                                  <Trash2 className="size-4" />
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                          
+                          {cart.length === 0 && (
+                            <TableRow>
+                              <TableCell colSpan={5} className="py-12 text-center">
+                                <ShoppingCart className="mx-auto size-8 text-muted-foreground" />
+                                <p className="mt-2 text-sm text-muted-foreground">
+                                  Cart is empty. Add items to start a sale.
+                                </p>
+                                <Button 
+                                  variant="link" 
+                                  onClick={() => setAddItemOpen(true)}
+                                  className="mt-2"
+                                >
+                                  <Plus className="size-4 mr-1" />
+                                  Add First Item
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          )}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </Card>
+                </div>
+                
+                {/* Checkout Section */}
+                <div className="space-y-4">
+                  <Card className="p-4">
+                    <h3 className="font-semibold mb-3">Sale Summary</h3>
+                    
+                    <div className="space-y-3">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Subtotal:</span>
+                        <span>{formatCurrency(subtotal)}</span>
+                      </div>
+                      
+                      <div className="flex justify-between items-center">
+                        <span className="text-muted-foreground text-sm">Discount:</span>
+                        <div className="flex gap-2">
+                          <Select value={discountType} onValueChange={(v: any) => setDiscountType(v)}>
+                            <SelectTrigger className="w-24">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="fixed">Fixed</SelectItem>
+                              <SelectItem value="percentage">%</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <Input
+                            type="number"
+                            className="w-24"
+                            placeholder="0"
+                            value={discount}
+                            onChange={(e) => setDiscount(parseFloat(e.target.value) || 0)}
+                          />
+                        </div>
+                      </div>
+                      
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Tax (18%):</span>
+                        <span>{formatCurrency(tax)}</span>
+                      </div>
+                      
+                      <Separator />
+                      
+                      <div className="flex justify-between text-lg font-bold">
+                        <span>Total:</span>
+                        <span>{formatCurrency(total)}</span>
+                      </div>
+                      
+                      <Separator />
+                      
+                      <div className="space-y-2">
+                        <div className="flex justify-between text-sm">
+                          <span className="text-muted-foreground">Customer:</span>
+                          <Button 
+                            variant="link" 
+                            className="p-0 h-auto"
+                            onClick={() => setCustomerSelectOpen(true)}
+                          >
+                            {selectedCustomer?.name || "Walk-in Customer"} <ChevronRight className="size-3 ml-1" />
+                          </Button>
+                        </div>
+                        
+                        {selectedCustomer && (
+                          <div className="text-xs text-muted-foreground">
+                            {selectedCustomer.phone && <div>📞 {selectedCustomer.phone}</div>}
+                          </div>
+                        )}
+                      </div>
+                      
+                      <div className="space-y-2">
+                        <Label className="text-sm">Notes</Label>
+                        <Textarea
+                          placeholder="Add sale notes..."
+                          value={notes}
+                          onChange={(e) => setNotes(e.target.value)}
+                          rows={2}
                         />
                       </div>
                     </div>
                     
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Tax (18%):</span>
-                      <span>{formatCurrency(tax)}</span>
+                    <div className="flex gap-2 mt-4">
+                      <Button 
+                        className="flex-1" 
+                        size="lg"
+                        disabled={cart.length === 0}
+                        onClick={() => setPaymentOpen(true)}
+                      >
+                        <CreditCard className="size-4 mr-2" />
+                        Checkout
+                      </Button>
                     </div>
-                    
-                    <Separator />
-                    
-                    <div className="flex justify-between text-lg font-bold">
-                      <span>Total:</span>
-                      <span>{formatCurrency(total)}</span>
-                    </div>
-                    
-                    <Separator />
-                    
-                    <div className="space-y-2">
-                      <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">Customer:</span>
-                        <Button 
-                          variant="link" 
-                          className="p-0 h-auto"
-                          onClick={() => setCustomerSelectOpen(true)}
-                        >
-                          {selectedCustomer?.name || "Walk-in Customer"} <ChevronRight className="size-3 ml-1" />
-                        </Button>
-                      </div>
-                      
-                      {selectedCustomer && (
-                        <div className="text-xs text-muted-foreground">
-                          {selectedCustomer.phone && <div>📞 {selectedCustomer.phone}</div>}
-                        </div>
-                      )}
-                    </div>
-                    
-                    <div className="space-y-2">
-                      <Label className="text-sm">Notes</Label>
-                      <Textarea
-                        placeholder="Add sale notes..."
-                        value={notes}
-                        onChange={(e) => setNotes(e.target.value)}
-                        rows={2}
-                      />
-                    </div>
-                  </div>
+                  </Card>
                   
-                  <div className="flex gap-2 mt-4">
-                    <Button 
-                      className="flex-1" 
-                      size="lg"
-                      disabled={cart.length === 0}
-                      onClick={() => setPaymentOpen(true)}
-                    >
-                      <CreditCard className="size-4 mr-2" />
-                      Checkout
-                    </Button>
-                  </div>
-                </Card>
-                
-                {/* Quick Actions */}
-                <Card className="p-4">
-                  <h3 className="font-semibold mb-2">Quick Actions</h3>
-                  <div className="grid grid-cols-2 gap-2">
-                    <Button variant="outline" size="sm" onClick={() => setAddItemOpen(true)}>
-                      <Plus className="size-4 mr-1" />
-                      Add Item
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={() => setCustomerSelectOpen(true)}>
-                      <Users className="size-4 mr-1" />
-                      Add Customer
-                    </Button>
-                  </div>
-                </Card>
+                  {/* Quick Actions */}
+                  <Card className="p-4">
+                    <h3 className="font-semibold mb-2">Quick Actions</h3>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Button variant="outline" size="sm" onClick={() => setAddItemOpen(true)}>
+                        <Plus className="size-4 mr-1" />
+                        Add Item
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={() => setCustomerSelectOpen(true)}>
+                        <Users className="size-4 mr-1" />
+                        Add Customer
+                      </Button>
+                    </div>
+                  </Card>
+                </div>
               </div>
-            </div>
+            )}
           </TabsContent>
           
           {/* Sales History Tab */}

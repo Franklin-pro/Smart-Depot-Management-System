@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { seedActivities } from '@/lib/mock-data';
 import type { Activity } from '@/lib/types';
 
 // In-memory storage (use database in production)
-let activities = [...seedActivities];
+let activities: Activity[] = [];
 
 // GET /api/activities - Get all activities
 export async function GET() {

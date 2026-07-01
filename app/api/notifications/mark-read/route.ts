@@ -1,8 +1,9 @@
+import { AppNotification } from '@/lib/types';
 import { NextRequest, NextResponse } from 'next/server';
-import { seedNotifications } from '@/lib/mock-data';
+
 
 // In-memory storage (use database in production)
-let notifications = [...seedNotifications];
+let notifications: AppNotification[] = [];
 
 // POST /api/notifications/mark-read - Mark notifications as read
 export async function POST(request: NextRequest) {

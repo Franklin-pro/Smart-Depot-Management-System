@@ -1,20 +1,13 @@
-import { NextResponse } from 'next/server';
-import { 
-  seedProducts, 
-  seedSales, 
-  seedExpenses, 
-  seedCustomers,
-  seedEmptyCaseTransactions,
-  seedNotifications 
-} from '@/lib/mock-data';
+import { Customer, EmptyCaseTransaction, Expense, Product, Sale } from '@/lib/types';
+import { NextResponse } from 'next/server'; 
 
 // In-memory storage (use database in production)
-const products = [...seedProducts];
-const sales = [...seedSales];
-const expenses = [...seedExpenses];
-const customers = [...seedCustomers];
-const emptyCaseTransactions = [...seedEmptyCaseTransactions];
-const notifications = [...seedNotifications];
+const products: Product[] = [];
+const sales: Sale[] = [];
+const expenses: Expense[] = [];
+const customers: Customer[] = [];
+const emptyCaseTransactions: EmptyCaseTransaction[] = [];
+const notifications: Notification[] = [];
 
 // GET /api/reports/dashboard - Get dashboard data
 export async function GET() {
@@ -46,7 +39,7 @@ export async function GET() {
   const totalCustomers = customers.length;
   const activeCustomers = customers.filter(c => c.totalTransactions > 0).length;
   
-  const unreadNotifications = notifications.filter(n => !n.read).length;
+  const unreadNotifications = notifications.filter((n:any) => !n.read).length;
   
   // Sales trend data (last 7 days)
   const salesByDate = new Map<string, { amount: number; count: number }>();
