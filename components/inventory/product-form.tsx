@@ -40,9 +40,6 @@ const getContainerConfig = (category: string): ContainerConfig => {
         containerLabel: "Box",
         allowSizeCustomization: true,
         sizeOptions: [
-          { label: "Small Box", bottles: 6 },
-          { label: "Standard Box", bottles: 12 },
-          { label: "Large Box", bottles: 18 },
           { label: "Custom", bottles: 0 },
         ]
       }
@@ -53,9 +50,6 @@ const getContainerConfig = (category: string): ContainerConfig => {
         containerLabel: "Case",
         allowSizeCustomization: true,
         sizeOptions: [
-          { label: "6-pack", bottles: 6 },
-          { label: "12-pack", bottles: 12 },
-          { label: "24-pack", bottles: 24 },
           { label: "Custom", bottles: 0 },
         ]
       }
@@ -66,8 +60,6 @@ const getContainerConfig = (category: string): ContainerConfig => {
         containerLabel: "Case",
         allowSizeCustomization: true,
         sizeOptions: [
-          { label: "6-bottle Case", bottles: 6 },
-          { label: "12-bottle Case", bottles: 12 },
           { label: "Custom", bottles: 0 },
         ]
       }
@@ -513,6 +505,8 @@ export function ProductForm({
             <Input 
               id="name" 
               value={v.name} 
+              autoComplete="off"
+              placeholder="ex:Tusker"
               onChange={(e) => set("name", e.target.value)} 
               className={errors.name ? "border-destructive" : ""}
             />
@@ -524,6 +518,8 @@ export function ProductForm({
             <Input 
               id="brand" 
               value={v.brand} 
+              autoComplete="off"
+              placeholder="ex:East African Breweries"
               onChange={(e) => set("brand", e.target.value)} 
               className={errors.brand ? "border-destructive" : ""}
             />
@@ -603,6 +599,7 @@ export function ProductForm({
                       type="text"
                       inputMode="numeric"
                       placeholder="Enter bottles"
+                      autoComplete="off"
                       value={customBottleCount === 0 ? '' : customBottleCount}
                       onChange={(e) => {
                         const cleaned = cleanNumberInput(e.target.value)
@@ -642,6 +639,7 @@ export function ProductForm({
               id="full"
               type="text"
               inputMode="numeric"
+              autoComplete="off"
               placeholder="0"
               value={v.fullCases === 0 ? '' : v.fullCases}
               onChange={handleIntegerChange((val) => set("fullCases", Math.max(0, val)))}
@@ -659,6 +657,7 @@ export function ProductForm({
               id="empty"
               type="text"
               inputMode="numeric"
+              autoComplete="off"
               placeholder="0"
               value={v.emptyCases === 0 ? '' : v.emptyCases}
               onChange={handleIntegerChange((val) => set("emptyCases", Math.max(0, val)))}
@@ -790,6 +789,7 @@ export function ProductForm({
                 <div>
                   <Input
                     placeholder="Notes (optional)"
+                    autoComplete="off"
                     value={newPartialCaseNotes === '' ? '' : newPartialCaseNotes}
                     onChange={(e) => setNewPartialCaseNotes(e.target.value)}
                   />
@@ -859,6 +859,7 @@ export function ProductForm({
                 <Input
                   id="missing"
                   type="text"
+                  autoComplete="off"
                   inputMode="numeric"
                   placeholder="0"
                   value={missingBottles === 0 ? '' : missingBottles}
@@ -875,6 +876,7 @@ export function ProductForm({
                 <Input
                   id="damaged"
                   type="text"
+                  autoComplete="off"
                   inputMode="numeric"
                   placeholder="0"
                   value={damagedBottles === 0 ? '' : damagedBottles}
@@ -891,6 +893,7 @@ export function ProductForm({
                 <Input
                   id="returned"
                   type="text"
+                  autoComplete="off"
                   inputMode="numeric"
                   placeholder="0"
                   value={returnedBottles === 0 ? '' : returnedBottles}
@@ -959,6 +962,7 @@ export function ProductForm({
             <Input
               id="purchasePerContainer"
               type="text"
+              autoComplete="off"
               inputMode="decimal"
               placeholder="0"
               value={(v.purchasePricePerContainer ?? 0) === 0 ? '' : v.purchasePricePerContainer}
@@ -978,6 +982,7 @@ export function ProductForm({
               id="sellingPerContainer"
               type="text"
               inputMode="decimal"
+              autoComplete="off"
               placeholder="0"
               value={(v.sellingPricePerContainer ?? 0) === 0 ? '' : v.sellingPricePerContainer}
               onChange={handleNumberChange((val) => set("sellingPricePerContainer", Math.max(0, val)))}
@@ -994,6 +999,7 @@ export function ProductForm({
               id="deposit"
               type="text"
               inputMode="decimal"
+              autoComplete="off"
               placeholder="0"
               value={v.depositAmount === 0 ? '' : v.depositAmount}
               onChange={handleNumberChange((val) => set("depositAmount", Math.max(0, val)))}
@@ -1030,6 +1036,7 @@ export function ProductForm({
             <Input 
               id="batch" 
               value={v.batchNumber} 
+              autoComplete="off"
               onChange={(e) => set("batchNumber", e.target.value)} 
               className={errors.batchNumber ? "border-destructive" : ""}
               placeholder="e.g., BATCH-2024-001"
@@ -1043,6 +1050,7 @@ export function ProductForm({
               id="threshold"
               type="text"
               inputMode="numeric"
+              autoComplete="off"
               placeholder="40"
               value={v.lowStockThreshold === 0 ? '' : v.lowStockThreshold}
               onChange={handleIntegerChange((val) => set("lowStockThreshold", Math.max(0, val)))}

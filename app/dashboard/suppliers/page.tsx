@@ -143,6 +143,7 @@ export default function SuppliersPage() {
                     <Input
                       id="s-name"
                       value={form.name}
+                      autoComplete="off"
                       onChange={(e) => setForm({ ...form, name: e.target.value })}
                       required
                       placeholder="e.g., Beer Distributors Ltd"
@@ -153,6 +154,7 @@ export default function SuppliersPage() {
                     <Input
                       id="s-contact"
                       value={form.contact}
+                      autoComplete="off"
                       onChange={(e) => setForm({ ...form, contact: e.target.value })}
                       required
                       placeholder="e.g., John Doe"
@@ -164,6 +166,7 @@ export default function SuppliersPage() {
                       <Input
                         id="s-phone"
                         value={form.phone}
+                        autoComplete="off"
                         onChange={(e) => setForm({ ...form, phone: e.target.value })}
                         required
                         placeholder="+250 788 123 456"
@@ -175,6 +178,7 @@ export default function SuppliersPage() {
                         id="s-email"
                         type="email"
                         value={form.email}
+                        autoComplete="off"
                         onChange={(e) => setForm({ ...form, email: e.target.value })}
                         placeholder="supplier@example.com"
                       />

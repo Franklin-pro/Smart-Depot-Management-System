@@ -432,48 +432,58 @@ export default function ReportsPage() {
         return daysLeft >= 0 && daysLeft <= 30
       }).length
       
-      // Revenue vs Expenses trend
-      const monthlyMap = new Map<string, { revenue: number; expenses: number }>()
+      // FIXED: Revenue vs Expenses trend - Month names only (January to December)
+      const monthAggregate = new Map<number, { 
+        month: string; 
+        revenue: number; 
+        expenses: number; 
+        profit: number;
+        monthIndex: number;
+      }>()
       
+      // Initialize all months
+      const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 
+                         'July', 'August', 'September', 'October', 'November', 'December']
+      
+      for (let i = 0; i < 12; i++) {
+        monthAggregate.set(i, {
+          month: monthNames[i],
+          revenue: 0,
+          expenses: 0,
+          profit: 0,
+          monthIndex: i
+        })
+      }
+      
+      // Aggregate sales by month
       filteredSales.forEach(sale => {
-        const month = new Date(sale.createdAt).toLocaleString('default', { month: 'short', year: 'numeric' })
-        const existing = monthlyMap.get(month) || { revenue: 0, expenses: 0 }
-        existing.revenue += sale.total || 0
-        monthlyMap.set(month, existing)
+        const date = new Date(sale.createdAt)
+        const monthIndex = date.getMonth()
+        const existing = monthAggregate.get(monthIndex)
+        if (existing) {
+          existing.revenue += sale.total || 0
+          existing.profit = existing.revenue - existing.expenses
+        }
       })
       
+      // Aggregate expenses by month
       filteredExpenses.forEach(expense => {
-        const month = new Date(expense.date).toLocaleString('default', { month: 'short', year: 'numeric' })
-        const existing = monthlyMap.get(month) || { revenue: 0, expenses: 0 }
-        existing.expenses += expense.amount || 0
-        monthlyMap.set(month, existing)
+        const date = new Date(expense.date)
+        const monthIndex = date.getMonth()
+        const existing = monthAggregate.get(monthIndex)
+        if (existing) {
+          existing.expenses += expense.amount || 0
+          existing.profit = existing.revenue - existing.expenses
+        }
       })
       
-      const revenueExpenses = Array.from(monthlyMap.entries())
-        .map(([month, data]) => ({
-          month,
+      const revenueExpenses = Array.from(monthAggregate.entries())
+        .sort((a, b) => a[0] - b[0])
+        .map(([_, data]) => ({
+          month: data.month,
           revenue: data.revenue,
           expenses: data.expenses,
-          profit: data.revenue - data.expenses
-        }))
-        .sort((a, b) => new Date(a.month).getTime() - new Date(b.month).getTime())
-      
-      // Stock status breakdown
-      const stockStatus = [
-        { name: "Available", value: totalAvailableBottles, color: "#10b981" },
-        { name: "Missing", value: totalMissingBottles, color: "#ef4444" },
-        { name: "Damaged", value: totalDamagedBottles, color: "#f59e0b" },
-        { name: "Returned", value: totalReturnedBottles, color: "#3b82f6" },
-      ].filter(s => s.value > 0)
-      
-      // Bottle issues per product
-      const bottleIssues = extendedProducts
-        .filter(p => (p.bottleInfo?.missing || 0) > 0 || (p.bottleInfo?.damaged || 0) > 0)
-        .map(p => ({
-          name: p.name,
-          missing: p.bottleInfo?.missing || 0,
-          damaged: p.bottleInfo?.damaged || 0,
-          returned: p.bottleInfo?.returned || 0,
+          profit: data.profit
         }))
       
       // Sales trend data
@@ -587,6 +597,24 @@ export default function ReportsPage() {
           name: safeCapitalize(name),
           value,
           color: COLORS[(index + 5) % COLORS.length]
+        }))
+      
+      // Stock status breakdown
+      const stockStatus = [
+        { name: "Available", value: totalAvailableBottles, color: "#10b981" },
+        { name: "Missing", value: totalMissingBottles, color: "#ef4444" },
+        { name: "Damaged", value: totalDamagedBottles, color: "#f59e0b" },
+        { name: "Returned", value: totalReturnedBottles, color: "#3b82f6" },
+      ].filter(s => s.value > 0)
+      
+      // Bottle issues per product
+      const bottleIssues = extendedProducts
+        .filter(p => (p.bottleInfo?.missing || 0) > 0 || (p.bottleInfo?.damaged || 0) > 0)
+        .map(p => ({
+          name: p.name,
+          missing: p.bottleInfo?.missing || 0,
+          damaged: p.bottleInfo?.damaged || 0,
+          returned: p.bottleInfo?.returned || 0,
         }))
       
       // Tables data

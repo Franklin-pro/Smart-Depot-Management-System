@@ -610,7 +610,7 @@ export default function SalesPage() {
   const [statusFilter, setStatusFilter] = useState<"all" | "completed" | "cancelled">("all")
   
   // Check if current user is owner
-  const isOwner = currentUser?.role === "owner"
+  const isOwner = currentUser?.role === "owner" || currentUser?.role === "manager"
 
   // Get theme-aware chart colors
   const isDark = theme === 'dark'

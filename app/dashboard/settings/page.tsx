@@ -46,6 +46,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import { usersService } from "@/services"
 
 // Types
 interface CompanySettings {
@@ -115,6 +116,20 @@ function ChangePasswordModal({
   const [showNew, setShowNew] = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [user, setUser] = useState<any>(null)
+
+  useEffect(() => {
+    const fetchUser = async () => {
+      try {
+        const userData = await usersService.profileUser()
+        setUser(userData)
+      } catch (error) {
+        console.error("Failed to fetch user:", error)
+      }
+    }
+
+    fetchUser()
+  }, [])
 
   const handleSubmit = () => {
     if (!currentPassword) {
