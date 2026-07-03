@@ -139,7 +139,7 @@ export default function InventoryPage() {
   // ✅ Updated to use API
   const handleAdd = async (values: ProductFormValues) => {
     try {
-      const extendedProduct: ExtendedProduct = {
+      const extendedProduct: any = {
         ...values,
         bottleInfo: {
           damaged: 0,
