@@ -15,10 +15,32 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { AlertCircle, Package, Beer, TrendingUp, Split, Plus, Minus, Trash2, Wine } from "lucide-react"
+import { 
+  AlertCircle, 
+  Package, 
+  Beer, 
+  TrendingUp, 
+  Split, 
+  Plus, 
+  Trash2, 
+  Wine,
+  ChevronRight,
+  ChevronLeft,
+  Check,
+  Building2,
+  Calendar,
+  DollarSign,
+  ClipboardList,
+  Box,
+  FlaskConical,
+  Ruler,
+  Pencil
+} from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Card } from "@/components/ui/card"
+import { Progress } from "@/components/ui/progress"
 import { toast } from "sonner"
+import { cn } from "@/lib/utils"
 
 const categories = ["Beer", "Liquor", "Wine"]
 
@@ -28,7 +50,7 @@ interface ContainerConfig {
   defaultBottlesPerContainer: number
   containerLabel: string
   allowSizeCustomization: boolean
-  sizeOptions?: { label: string; bottles: number }[]
+  allowEmptyBoxes: boolean
 }
 
 const getContainerConfig = (category: string): ContainerConfig => {
@@ -39,19 +61,7 @@ const getContainerConfig = (category: string): ContainerConfig => {
         defaultBottlesPerContainer: 12,
         containerLabel: "Box",
         allowSizeCustomization: true,
-        sizeOptions: [
-          { label: "Custom", bottles: 0 },
-        ]
-      }
-    case "Beer":
-      return {
-        type: "case",
-        defaultBottlesPerContainer: 24,
-        containerLabel: "Case",
-        allowSizeCustomization: true,
-        sizeOptions: [
-          { label: "Custom", bottles: 0 },
-        ]
+        allowEmptyBoxes: false,
       }
     case "Wine":
       return {
@@ -59,9 +69,15 @@ const getContainerConfig = (category: string): ContainerConfig => {
         defaultBottlesPerContainer: 12,
         containerLabel: "Case",
         allowSizeCustomization: true,
-        sizeOptions: [
-          { label: "Custom", bottles: 0 },
-        ]
+        allowEmptyBoxes: false,
+      }
+    case "Beer":
+      return {
+        type: "case",
+        defaultBottlesPerContainer: 24,
+        containerLabel: "Case",
+        allowSizeCustomization: true,
+        allowEmptyBoxes: true,
       }
     default:
       return {
@@ -69,6 +85,7 @@ const getContainerConfig = (category: string): ContainerConfig => {
         defaultBottlesPerContainer: 24,
         containerLabel: "Case",
         allowSizeCustomization: false,
+        allowEmptyBoxes: true,
       }
   }
 }
@@ -89,6 +106,7 @@ export interface PartialCase {
   notes?: string
   containerType?: "case" | "box"
   sizeLabel?: string
+  bottleType?: "small" | "grand"
 }
 
 export type ProductFormValues = Omit<Product, "id" | "createdAt" | "updatedAt"> & {
@@ -98,6 +116,7 @@ export type ProductFormValues = Omit<Product, "id" | "createdAt" | "updatedAt"> 
   containerType?: "case" | "box"
   bottlesPerContainer?: number
   containerSizeLabel?: string
+  bottleType?: "small" | "grand"
   purchasePricePerContainer?: number 
   sellingPricePerContainer?: number
 }
@@ -145,6 +164,14 @@ function formatCurrency(amount: number): string {
   }).format(amount)
 }
 
+// Step Configuration
+const STEPS = [
+  { id: 'basic', label: 'Basic Info', icon: Package },
+  { id: 'stock', label: 'Stock Details', icon: Box },
+  { id: 'pricing', label: 'Pricing', icon: DollarSign },
+  { id: 'tracking', label: 'Tracking', icon: ClipboardList },
+]
+
 export function ProductForm({
   initial,
   onSubmit,
@@ -156,16 +183,14 @@ export function ProductForm({
 }) {
   const { suppliers } = useApp()
   const [errors, setErrors] = useState<Record<string, string>>({})
+  const [currentStep, setCurrentStep] = useState(0)
   const [showBottleTracking, setShowBottleTracking] = useState(false)
   const [showPartialCases, setShowPartialCases] = useState(false)
   const [newPartialCaseBottles, setNewPartialCaseBottles] = useState(12)
   const [newPartialCaseReason, setNewPartialCaseReason] = useState<PartialCase["reason"]>("sold_individual")
   const [newPartialCaseNotes, setNewPartialCaseNotes] = useState("")
-  const [selectedSizeLabel, setSelectedSizeLabel] = useState<string>("Standard Box")
-  const [isCustomBottleCount, setIsCustomBottleCount] = useState(false)
-  const [customBottleCount, setCustomBottleCount] = useState<number>(24)
+  const [selectedBottleType, setSelectedBottleType] = useState<"small" | "grand">("grand")
   
-  // Use ref to track if initial setup is done
   const isInitialized = useRef(false)
   
   // Initialize form state with proper defaults
@@ -195,64 +220,13 @@ export function ProductForm({
     lastStockCheck: (initial as any)?.lastStockCheck ?? new Date(),
     containerType: (initial as any)?.containerType ?? "case",
     bottlesPerContainer: (initial as any)?.bottlesPerContainer ?? 24,
-    containerSizeLabel: (initial as any)?.containerSizeLabel ?? "Standard",
+    containerSizeLabel: (initial as any)?.containerSizeLabel ?? "Grand",
+    bottleType: (initial as any)?.bottleType ?? "grand",
   }))
 
   // Get current container configuration based on category
   const containerConfig = getContainerConfig(v.category)
-  
-  // Get current size options and selected size
-  const sizeOptions = containerConfig.sizeOptions || []
-  
-  // FIXED: Get bottlesPerContainer with fallback
   const BOTTLES_PER_CONTAINER = v.bottlesPerContainer ?? 24
-
-  // FIXED: Only run this effect on initial mount or when category changes
-  useEffect(() => {
-    // Only run if not initialized yet or category changed
-    if (isInitialized.current) return
-    
-    const config = getContainerConfig(v.category)
-    
-    if (config.allowSizeCustomization && config.sizeOptions && config.sizeOptions.length > 0) {
-      // Find default option
-      const defaultOption = config.sizeOptions.find(opt => opt.label === "Standard Box") || 
-                           config.sizeOptions.find(opt => opt.label === "Standard") ||
-                           config.sizeOptions.find(opt => opt.bottles > 0)
-      
-      if (defaultOption && defaultOption.bottles > 0) {
-        setV(prev => ({
-          ...prev,
-          containerType: config.type,
-          bottlesPerContainer: defaultOption.bottles,
-          containerSizeLabel: defaultOption.label
-        }))
-        setSelectedSizeLabel(defaultOption.label)
-        setIsCustomBottleCount(false)
-      } else if (defaultOption && defaultOption.bottles === 0) {
-        // Custom size is default
-        const customValue = customBottleCount || config.defaultBottlesPerContainer
-        setV(prev => ({
-          ...prev,
-          containerType: config.type,
-          bottlesPerContainer: customValue,
-          containerSizeLabel: "Custom"
-        }))
-        setSelectedSizeLabel("Custom")
-        setIsCustomBottleCount(true)
-      }
-    } else {
-      setV(prev => ({
-        ...prev,
-        containerType: config.type,
-        bottlesPerContainer: config.defaultBottlesPerContainer,
-        containerSizeLabel: "Standard"
-      }))
-      setIsCustomBottleCount(false)
-    }
-    
-    isInitialized.current = true
-  }, [v.category]) // Only depend on category change
 
   // Calculate derived values
   const totalFromFullContainers = v.fullCases * BOTTLES_PER_CONTAINER
@@ -268,33 +242,32 @@ export function ProductForm({
   const hasIssues = missingBottles > 0 || damagedBottles > 0
   const hasPartialCases = (v.partialCases || []).length > 0
 
-  // Get safe price values (default to 0 if undefined)
   const purchasePricePerContainer = v.purchasePricePerContainer ?? 0
   const sellingPricePerContainer = v.sellingPricePerContainer ?? 0
 
-  // Calculate per-bottle prices (for informational display only)
-  const purchasePricePerBottle = BOTTLES_PER_CONTAINER > 0 
-    ? purchasePricePerContainer / BOTTLES_PER_CONTAINER 
-    : 0
-  const sellingPricePerBottle = BOTTLES_PER_CONTAINER > 0 
-    ? sellingPricePerContainer / BOTTLES_PER_CONTAINER 
-    : 0
-
-  // Profit margin per bottle
-  const profitMarginPerBottle = sellingPricePerBottle > 0 && purchasePricePerBottle > 0
-    ? ((sellingPricePerBottle - purchasePricePerBottle) / purchasePricePerBottle) * 100
-    : 0
-
-  // Profit margin per container
   const profitMarginPerContainer = sellingPricePerContainer > 0 && purchasePricePerContainer > 0
     ? ((sellingPricePerContainer - purchasePricePerContainer) / purchasePricePerContainer) * 100
     : 0
 
-  // Auto-show sections if there are issues
   useEffect(() => {
     if (hasIssues) setShowBottleTracking(true)
     if (hasPartialCases) setShowPartialCases(true)
   }, [hasIssues, hasPartialCases])
+
+  // Handle category change
+  useEffect(() => {
+    if (isInitialized.current) return
+    
+    const config = getContainerConfig(v.category)
+    
+    setV(prev => ({
+      ...prev,
+      containerType: config.type,
+      bottlesPerContainer: config.defaultBottlesPerContainer,
+    }))
+    
+    isInitialized.current = true
+  }, [v.category])
 
   function set<K extends keyof ProductFormValues>(key: K, val: ProductFormValues[K]) {
     setV((prev) => ({ ...prev, [key]: val }))
@@ -317,7 +290,6 @@ export function ProductForm({
     }))
   }
 
-  // Handle number input changes
   const handleNumberChange = (setter: (value: number) => void, max?: number) => (e: React.ChangeEvent<HTMLInputElement>) => {
     const rawValue = e.target.value
     const cleanedValue = cleanNumberInput(rawValue)
@@ -327,7 +299,6 @@ export function ProductForm({
     setter(num)
   }
 
-  // Handle integer number input changes
   const handleIntegerChange = (setter: (value: number) => void, max?: number) => (e: React.ChangeEvent<HTMLInputElement>) => {
     const rawValue = e.target.value
     const cleanedValue = cleanNumberInput(rawValue)
@@ -356,6 +327,7 @@ export function ProductForm({
       notes: newPartialCaseNotes || undefined,
       containerType: v.containerType,
       sizeLabel: v.containerSizeLabel,
+      bottleType: v.bottleType,
     }
 
     setV(prev => ({
@@ -400,7 +372,11 @@ export function ProductForm({
     if (!v.name.trim()) newErrors.name = "Product name is required"
     if (!v.brand.trim()) newErrors.brand = "Brand is required"
     if (v.fullCases < 0) newErrors.fullCases = `${containerConfig.containerLabel}s cannot be negative`
-    if (v.emptyCases < 0) newErrors.emptyCases = `Empty ${containerConfig.containerLabel}s cannot be negative`
+    
+    if (containerConfig.allowEmptyBoxes && v.emptyCases < 0) {
+      newErrors.emptyCases = `Empty ${containerConfig.containerLabel}s cannot be negative`
+    }
+    
     if ((v.purchasePricePerContainer ?? 0) < 0) newErrors.purchasePricePerContainer = "Purchase price cannot be negative"
     if ((v.sellingPricePerContainer ?? 0) < 0) newErrors.sellingPricePerContainer = "Selling price cannot be negative"
     if ((v.sellingPricePerContainer ?? 0) <= (v.purchasePricePerContainer ?? 0) && (v.sellingPricePerContainer ?? 0) > 0) {
@@ -427,7 +403,6 @@ export function ProductForm({
     e.preventDefault()
     if (!validateForm()) return
 
-    // Calculate per-bottle prices for backward compatibility
     const purchasePricePerBottle = BOTTLES_PER_CONTAINER > 0 
       ? (v.purchasePricePerContainer ?? 0) / BOTTLES_PER_CONTAINER 
       : 0
@@ -443,6 +418,7 @@ export function ProductForm({
       bottlesPerContainer: BOTTLES_PER_CONTAINER,
       purchasePrice: purchasePricePerBottle,
       sellingPrice: sellingPricePerBottle,
+      bottleType: v.bottleType || "grand",
     })
   }
 
@@ -464,195 +440,267 @@ export function ProductForm({
     }
   }
 
-  const handleSizeChange = (label: string) => {
-    setSelectedSizeLabel(label)
-    const selectedOption = sizeOptions.find(opt => opt.label === label)
-    if (selectedOption && selectedOption.bottles > 0) {
-      setIsCustomBottleCount(false)
-      setV(prev => ({
-        ...prev,
-        bottlesPerContainer: selectedOption.bottles,
-        containerSizeLabel: label
-      }))
-    } else if (selectedOption && selectedOption.bottles === 0) {
-      setIsCustomBottleCount(true)
-      const currentBottles = customBottleCount || containerConfig.defaultBottlesPerContainer
-      setV(prev => ({
-        ...prev,
-        bottlesPerContainer: currentBottles,
-        containerSizeLabel: "Custom"
-      }))
-    }
-  }
-
-  const handleCustomBottleChange = (value: number) => {
-    setCustomBottleCount(value)
+  const handleBottleTypeToggle = (type: "small" | "grand") => {
+    setSelectedBottleType(type)
     setV(prev => ({
       ...prev,
-      bottlesPerContainer: value,
-      containerSizeLabel: "Custom"
+      bottleType: type,
+      containerSizeLabel: type === "small" ? "Small" : "Grand"
     }))
   }
 
-  return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-6">
-      {/* Basic Information Section */}
-      <div className="space-y-4">
-        <h3 className="text-lg font-semibold">Basic Information</h3>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <div className="flex w-full flex-col gap-2">
-            <Label htmlFor="name">Product Name *</Label>
-            <Input 
-              id="name" 
-              value={v.name} 
-              autoComplete="off"
-              placeholder="ex:Tusker"
-              onChange={(e) => set("name", e.target.value)} 
-              className={errors.name ? "border-destructive" : ""}
-            />
-            {errors.name && <p className="text-xs text-destructive">{errors.name}</p>}
-          </div>
-          
-          <div className="flex w-full flex-col gap-2">
-            <Label htmlFor="brand">Brand *</Label>
-            <Input 
-              id="brand" 
-              value={v.brand} 
-              autoComplete="off"
-              placeholder="ex:East African Breweries"
-              onChange={(e) => set("brand", e.target.value)} 
-              className={errors.brand ? "border-destructive" : ""}
-            />
-            {errors.brand && <p className="text-xs text-destructive">{errors.brand}</p>}
-          </div>
-          
-          <div className="flex w-full flex-col gap-2">
-            <Label>Category *</Label>
-            <Select value={v.category} onValueChange={(val) => set("category", val)}>
-              <SelectTrigger className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent className="w-full">
-                {categories.map((c) => (
-                  <SelectItem key={c} value={c}>
+  const handleBottlesPerContainerChange = (value: number) => {
+    setV(prev => ({
+      ...prev,
+      bottlesPerContainer: value
+    }))
+  }
+
+  const nextStep = () => {
+    if (currentStep < STEPS.length - 1) {
+      setCurrentStep(currentStep + 1)
+    }
+  }
+
+  const prevStep = () => {
+    if (currentStep > 0) {
+      setCurrentStep(currentStep - 1)
+    }
+  }
+
+  const isStepValid = (step: number): boolean => {
+    const tempErrors: Record<string, string> = {}
+    
+    if (step === 0) {
+      if (!v.name.trim()) tempErrors.name = "Required"
+      if (!v.brand.trim()) tempErrors.brand = "Required"
+      if (!v.supplier) tempErrors.supplier = "Required"
+      return Object.keys(tempErrors).length === 0
+    }
+    
+    if (step === 1) {
+      if (v.fullCases < 0) tempErrors.fullCases = "Cannot be negative"
+      if (containerConfig.allowEmptyBoxes && v.emptyCases < 0) {
+        tempErrors.emptyCases = "Cannot be negative"
+      }
+      if ((v.bottlesPerContainer ?? 0) <= 0) {
+        tempErrors.bottlesPerContainer = "Must be greater than 0"
+      }
+      return Object.keys(tempErrors).length === 0
+    }
+    
+    if (step === 2) {
+      if ((v.purchasePricePerContainer ?? 0) < 0) tempErrors.purchasePricePerContainer = "Cannot be negative"
+      if ((v.sellingPricePerContainer ?? 0) < 0) tempErrors.sellingPricePerContainer = "Cannot be negative"
+      return Object.keys(tempErrors).length === 0
+    }
+    
+    if (step === 3) {
+      if (!v.batchNumber.trim()) tempErrors.batchNumber = "Required"
+      return Object.keys(tempErrors).length === 0
+    }
+    
+    return true
+  }
+
+  const renderStep = () => {
+    switch (currentStep) {
+      case 0:
+        return renderBasicInfo()
+      case 1:
+        return renderStockDetails()
+      case 2:
+        return renderPricing()
+      case 3:
+        return renderTracking()
+      default:
+        return null
+    }
+  }
+
+  const renderBasicInfo = () => (
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="name" className="text-sm font-medium">
+            Product Name <span className="text-destructive">*</span>
+          </Label>
+          <Input 
+            id="name" 
+            value={v.name} 
+            autoComplete="off"
+            placeholder="e.g., Hennessy VS"
+            onChange={(e) => set("name", e.target.value)} 
+            className={cn(errors.name && "border-destructive")}
+          />
+          {errors.name && <p className="text-xs text-destructive">{errors.name}</p>}
+        </div>
+        
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="brand" className="text-sm font-medium">
+            Brand <span className="text-destructive">*</span>
+          </Label>
+          <Input 
+            id="brand" 
+            value={v.brand} 
+            autoComplete="off"
+            placeholder="e.g., Hennessy"
+            onChange={(e) => set("brand", e.target.value)} 
+            className={cn(errors.brand && "border-destructive")}
+          />
+          {errors.brand && <p className="text-xs text-destructive">{errors.brand}</p>}
+        </div>
+        
+        <div className="flex flex-col gap-2">
+          <Label className="text-sm font-medium">Category <span className="text-destructive">*</span></Label>
+          <Select value={v.category} onValueChange={(val) => {
+            set("category", val)
+            isInitialized.current = false
+          }}>
+            <SelectTrigger className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {categories.map((c) => (
+                <SelectItem key={c} value={c}>
+                  <div className="flex items-center gap-2">
+                    {c === "Beer" && <Beer className="size-4" />}
+                    {c === "Liquor" && <Wine className="size-4" />}
+                    {c === "Wine" && <Wine className="size-4" />}
                     {c}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+                  </div>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        
+        <div className="flex flex-col gap-2">
+          <Label className="text-sm font-medium">Supplier <span className="text-destructive">*</span></Label>
+          <Select value={v.supplier} onValueChange={(val) => set("supplier", val)}>
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="Select supplier" />
+            </SelectTrigger>
+            <SelectContent>
+              {suppliers.map((s) => (
+                <SelectItem key={s.id} value={s.name}>
+                  {s.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      <div className="rounded-lg bg-muted/30 p-4">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Building2 className="size-4" />
+          <span>Selected category: <strong>{v.category}</strong></span>
+          <Badge variant="outline" className="ml-auto">
+            {containerConfig.type === "box" ? "📦 Box" : "📦 Case"} format
+          </Badge>
+        </div>
+      </div>
+    </div>
+  )
+
+  const renderStockDetails = () => (
+    <div className="space-y-6">
+      {/* Container Configuration */}
+      <div className="rounded-lg border border-primary/20 bg-primary/5 p-4">
+        <div className="flex items-center gap-2">
+          {getContainerIcon()}
+          <span className="font-medium">Container Configuration</span>
+          <Badge variant="outline" className="ml-auto">
+            {BOTTLES_PER_CONTAINER} bottles/{containerConfig.containerLabel.toLowerCase()}
+          </Badge>
+        </div>
+        
+        <div className="mt-3 space-y-4">
+          {/* Bottle Type Selection */}
+          <div className="flex flex-wrap items-center gap-3">
+            <Label className="text-sm font-medium">Bottle Type:</Label>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant={selectedBottleType === "small" ? "default" : "outline"}
+                size="sm"
+                onClick={() => handleBottleTypeToggle("small")}
+                className="gap-2"
+              >
+                <Ruler className="size-3" />
+                Small
+              </Button>
+              <Button
+                type="button"
+                variant={selectedBottleType === "grand" ? "default" : "outline"}
+                size="sm"
+                onClick={() => handleBottleTypeToggle("grand")}
+                className="gap-2"
+              >
+                <Ruler className="size-3" />
+                Grand
+              </Button>
+            </div>
           </div>
-          
-          <div className="flex w-full flex-col gap-2">
-            <Label>Supplier *</Label>
-            <Select value={v.supplier} onValueChange={(val) => set("supplier", val)}>
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select supplier" />
-              </SelectTrigger>
-              <SelectContent className="w-full">
-                {suppliers.map((s) => (
-                  <SelectItem key={s.id} value={s.name}>
-                    {s.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+
+          {/* Custom Bottle Count */}
+          <div className="flex flex-wrap items-center gap-3 rounded-md border border-dashed border-primary/30 bg-primary/5 p-3">
+            <Pencil className="size-4 text-primary" />
+            <Label className="text-sm font-medium">Bottles per {containerConfig.containerLabel.toLowerCase()}:</Label>
+            <Input
+              type="text"
+              inputMode="numeric"
+              placeholder="Enter number"
+              autoComplete="off"
+              value={BOTTLES_PER_CONTAINER === 0 ? '' : BOTTLES_PER_CONTAINER}
+              onChange={(e) => {
+                const cleaned = cleanNumberInput(e.target.value)
+                const num = parseInt(cleaned)
+                if (!isNaN(num) && num > 0) {
+                  handleBottlesPerContainerChange(num)
+                } else if (e.target.value === '') {
+                  handleBottlesPerContainerChange(0)
+                }
+              }}
+              className="w-[120px]"
+            />
+            <span className="text-sm text-muted-foreground">
+              {selectedBottleType === "small" ? "Small" : "Grand"} bottles
+            </span>
+            {errors.bottlesPerContainer && (
+              <span className="text-xs text-destructive">{errors.bottlesPerContainer}</span>
+            )}
           </div>
         </div>
       </div>
 
-      {/* Stock Information Section */}
-      <div className="space-y-4">
-        <h3 className="text-lg font-semibold">Stock Information</h3>
-        
-        {/* Category-specific container configuration */}
-        <div className="rounded-md bg-blue-50 dark:bg-black p-3 mb-2">
-          <div className="flex items-center gap-2 text-sm text-blue-900 dark:text-blue-800">
-            {getContainerIcon()}
-            <span className="font-medium">
-              {v.category} Configuration
-            </span>
-            <Badge variant="outline" className="ml-auto bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-100">
-              {containerConfig.type === "box" ? "Box" : "Case"}
-            </Badge>
-          </div>
-          
-          <div className="mt-2 space-y-2">
-            {containerConfig.allowSizeCustomization && sizeOptions.length > 0 && (
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-xs text-blue-700 font-medium">Container Size:</span>
-                <Select value={selectedSizeLabel} onValueChange={handleSizeChange}>
-                  <SelectTrigger className="w-[180px] h-8 text-sm">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {sizeOptions.map((option) => (
-                      <SelectItem key={option.label} value={option.label}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                
-                {isCustomBottleCount && (
-                  <div className="flex items-center gap-2">
-                    <Input
-                      type="text"
-                      inputMode="numeric"
-                      placeholder="Enter bottles"
-                      autoComplete="off"
-                      value={customBottleCount === 0 ? '' : customBottleCount}
-                      onChange={(e) => {
-                        const cleaned = cleanNumberInput(e.target.value)
-                        const num = parseInt(cleaned)
-                        if (!isNaN(num) && num > 0) {
-                          handleCustomBottleChange(num)
-                        } else if (e.target.value === '') {
-                          handleCustomBottleChange(0)
-                        }
-                      }}
-                      className="w-[120px] h-8 text-sm"
-                    />
-                    <span className="text-xs text-blue-700">bottles</span>
-                  </div>
-                )}
-              </div>
-            )}
-            
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-blue-700">
-                {BOTTLES_PER_CONTAINER} bottles per {containerConfig.containerLabel.toLowerCase()}
-                {v.containerSizeLabel && v.containerSizeLabel !== "Standard" && 
-                  ` (${v.containerSizeLabel})`
-                }
-              </span>
-              {errors.bottlesPerContainer && (
-                <span className="text-xs text-destructive">{errors.bottlesPerContainer}</span>
-              )}
-            </div>
-          </div>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="full" className="text-sm font-medium">
+            Full {containerConfig.containerLabel}s <span className="text-destructive">*</span>
+          </Label>
+          <Input
+            id="full"
+            type="text"
+            inputMode="numeric"
+            autoComplete="off"
+            placeholder="0"
+            value={v.fullCases === 0 ? '' : v.fullCases}
+            onChange={handleIntegerChange((val) => set("fullCases", Math.max(0, val)))}
+            className={cn(errors.fullCases && "border-destructive")}
+          />
+          {errors.fullCases && <p className="text-xs text-destructive">{errors.fullCases}</p>}
+          <p className="text-xs text-muted-foreground">
+            {totalFromFullContainers} bottles total
+          </p>
         </div>
-
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <div className="flex w-full flex-col gap-2">
-            <Label htmlFor="full">Full {containerConfig.containerLabel}s  *</Label>
-            <Input
-              id="full"
-              type="text"
-              inputMode="numeric"
-              autoComplete="off"
-              placeholder="0"
-              value={v.fullCases === 0 ? '' : v.fullCases}
-              onChange={handleIntegerChange((val) => set("fullCases", Math.max(0, val)))}
-              className={errors.fullCases ? "border-destructive" : ""}
-            />
-            {errors.fullCases && <p className="text-xs text-destructive">{errors.fullCases}</p>}
-            <p className="text-xs text-muted-foreground">
-              {totalFromFullContainers} bottles from full {containerConfig.containerLabel.toLowerCase()}s
-            </p>
-          </div>
-          
-          <div className="flex w-full flex-col gap-2">
-            <Label htmlFor="empty">Empty {containerConfig.containerLabel}s</Label>
+        
+        {containerConfig.allowEmptyBoxes && (
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="empty" className="text-sm font-medium">
+              Empty {containerConfig.containerLabel}s
+            </Label>
             <Input
               id="empty"
               type="text"
@@ -663,96 +711,85 @@ export function ProductForm({
               onChange={handleIntegerChange((val) => set("emptyCases", Math.max(0, val)))}
             />
             <p className="text-xs text-muted-foreground">
-              Deposit value: {formatCurrency(v.depositAmount * v.emptyCases)}
+              Deposit: {formatCurrency(v.depositAmount * v.emptyCases)}
             </p>
           </div>
-        </div>
+        )}
+      </div>
 
-        {/* Partial Containers Section */}
-        <div className="flex items-center justify-between">
-          <button
-            type="button"
-            onClick={() => setShowPartialCases(!showPartialCases)}
-            className="text-sm text-primary hover:underline flex items-center gap-1"
-          >
-            {showPartialCases ? "− Hide partial containers" : "+ Add partial containers"}
-          </button>
+      {/* Partial Cases Section */}
+      <div>
+        <button
+          type="button"
+          onClick={() => setShowPartialCases(!showPartialCases)}
+          className="flex items-center gap-2 text-sm font-medium text-primary hover:underline"
+        >
+          <Split className="size-4" />
+          {showPartialCases ? "Hide partial containers" : "Manage partial containers"}
           {hasPartialCases && (
-            <Badge variant="outline" className="bg-orange-50">
-              {(v.partialCases || []).length} open {containerConfig.containerLabel.toLowerCase()}(s)
+            <Badge variant="secondary" className="ml-auto">
+              {(v.partialCases || []).length} open
             </Badge>
           )}
-        </div>
+        </button>
 
         {showPartialCases && (
-          <div className="rounded-lg border border-muted bg-muted/30 p-4 space-y-4">
-            <div className="flex items-center gap-2">
-              <Split className="size-4 text-orange-500" />
-              <h4 className="font-medium">Partial {containerConfig.containerLabel}s (Opened Containers)</h4>
-              {v.containerSizeLabel && v.containerSizeLabel !== "Standard" && (
-                <Badge variant="outline" className="ml-auto">
-                  {v.containerSizeLabel}
-                </Badge>
-              )}
-            </div>
-
+          <Card className="mt-3 p-4 space-y-4">
             {(v.partialCases || []).length > 0 && (
               <div className="space-y-2">
-                <Label>Current Open {containerConfig.containerLabel}s</Label>
+                <Label className="text-sm font-medium">Open Containers</Label>
                 {(v.partialCases || []).map(pc => (
-                  <Card key={pc.id} className="p-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          <Badge variant="outline">{pc.bottleCount} bottles</Badge>
-                          <Badge variant="secondary" className="text-xs">
-                            {getReasonLabel(pc.reason)}
-                          </Badge>
-                          {pc.sizeLabel && pc.sizeLabel !== "Standard" && (
-                            <Badge variant="outline" className="text-xs">
-                              {pc.sizeLabel}
-                            </Badge>
-                          )}
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                          Opened: {new Date(pc.openedDate).toLocaleDateString()}
-                          {pc.notes && ` • ${pc.notes}`}
-                        </p>
-                      </div>
+                  <div key={pc.id} className="flex items-center justify-between rounded-lg border p-3">
+                    <div>
                       <div className="flex items-center gap-2">
-                        <Input
-                          type="text"
-                          inputMode="numeric"
-                          placeholder="0"
-                          value={pc.bottleCount === 0 ? '' : pc.bottleCount}
-                          onChange={(e) => {
-                            const cleaned = cleanNumberInput(e.target.value)
-                            const num = parseInt(cleaned)
-                            if (!isNaN(num) && num > 0 && num < BOTTLES_PER_CONTAINER) {
-                              updatePartialCaseBottles(pc.id, num)
-                            }
-                          }}
-                          className="w-20 h-8 text-sm"
-                        />
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="size-8 text-destructive"
-                          onClick={() => removePartialCase(pc.id)}
-                        >
-                          <Trash2 className="size-4" />
-                        </Button>
+                        <Badge variant="outline">{pc.bottleCount} bottles</Badge>
+                        {pc.bottleType && (
+                          <Badge variant="secondary" className="text-xs capitalize">
+                            {pc.bottleType}
+                          </Badge>
+                        )}
+                        <Badge variant="secondary" className="text-xs">
+                          {getReasonLabel(pc.reason)}
+                        </Badge>
                       </div>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Opened: {new Date(pc.openedDate).toLocaleDateString()}
+                        {pc.notes && ` • ${pc.notes}`}
+                      </p>
                     </div>
-                  </Card>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        type="text"
+                        inputMode="numeric"
+                        placeholder="0"
+                        value={pc.bottleCount === 0 ? '' : pc.bottleCount}
+                        onChange={(e) => {
+                          const cleaned = cleanNumberInput(e.target.value)
+                          const num = parseInt(cleaned)
+                          if (!isNaN(num) && num > 0 && num < BOTTLES_PER_CONTAINER) {
+                            updatePartialCaseBottles(pc.id, num)
+                          }
+                        }}
+                        className="w-20"
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="size-8 text-destructive"
+                        onClick={() => removePartialCase(pc.id)}
+                      >
+                        <Trash2 className="size-4" />
+                      </Button>
+                    </div>
+                  </div>
                 ))}
               </div>
             )}
 
             <div className="border-t pt-4">
-              <Label className="mb-2 block">Open New {containerConfig.containerLabel}</Label>
-              <div className="grid gap-3 sm:grid-cols-3">
+              <Label className="text-sm font-medium">Open New {containerConfig.containerLabel}</Label>
+              <div className="mt-2 grid gap-3 sm:grid-cols-3">
                 <div>
                   <Input
                     type="text"
@@ -803,59 +840,37 @@ export function ProductForm({
                 className="mt-3"
               >
                 <Plus className="size-4 mr-1" />
-                Open {containerConfig.containerLabel} (uses 1 full {containerConfig.containerLabel.toLowerCase()})
+                Open {containerConfig.containerLabel}
               </Button>
               {errors.partialCases && (
                 <p className="text-xs text-destructive mt-2">{errors.partialCases}</p>
               )}
             </div>
-
-            <div className="rounded-md bg-background p-3">
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                <div>
-                  <div className="text-muted-foreground">From Partial {containerConfig.containerLabel}s</div>
-                  <div className="font-semibold text-orange-600">
-                    {totalFromPartialContainers} bottles
-                  </div>
-                </div>
-                <div>
-                  <div className="text-muted-foreground">Total Sellable</div>
-                  <div className="font-semibold text-green-600">
-                    {totalFromFullContainers + totalFromPartialContainers} bottles
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+          </Card>
         )}
+      </div>
 
-        {/* Bottle Tracking Toggle */}
-        <div className="flex items-center justify-between">
-          <button
-            type="button"
-            onClick={() => setShowBottleTracking(!showBottleTracking)}
-            className="text-sm text-primary hover:underline"
-          >
-            {showBottleTracking ? "− Hide bottle tracking" : "+ Track individual bottles"}
-          </button>
+      {/* Bottle Tracking */}
+      <div>
+        <button
+          type="button"
+          onClick={() => setShowBottleTracking(!showBottleTracking)}
+          className="flex items-center gap-2 text-sm font-medium text-primary hover:underline"
+        >
+          <Beer className="size-4" />
+          {showBottleTracking ? "Hide bottle tracking" : "Track individual bottles"}
           {hasIssues && (
-            <span className="flex items-center gap-1 text-xs text-destructive">
-              <AlertCircle className="size-3" />
+            <Badge variant="destructive" className="ml-auto">
               Issues detected
-            </span>
+            </Badge>
           )}
-        </div>
+        </button>
 
         {showBottleTracking && (
-          <div className="rounded-lg border border-muted bg-muted/30 p-4 space-y-4">
-            <div className="flex items-center gap-2">
-              <Beer className="size-4 text-muted-foreground" />
-              <h4 className="font-medium">Bottle-Level Tracking</h4>
-            </div>
-            
+          <Card className="mt-3 p-4 space-y-4">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <div className="flex flex-col gap-2">
-                <Label htmlFor="missing">Missing Bottles</Label>
+                <Label htmlFor="missing" className="text-sm">Missing Bottles</Label>
                 <Input
                   id="missing"
                   type="text"
@@ -868,11 +883,10 @@ export function ProductForm({
                     totalCapacity
                   )}
                 />
-                <p className="text-xs text-muted-foreground">Theft, loss, unaccounted</p>
               </div>
               
               <div className="flex flex-col gap-2">
-                <Label htmlFor="damaged">Damaged Bottles</Label>
+                <Label htmlFor="damaged" className="text-sm">Damaged Bottles</Label>
                 <Input
                   id="damaged"
                   type="text"
@@ -885,11 +899,10 @@ export function ProductForm({
                     totalCapacity - missingBottles
                   )}
                 />
-                <p className="text-xs text-muted-foreground">Broken, leaking, unsellable</p>
               </div>
               
               <div className="flex flex-col gap-2">
-                <Label htmlFor="returned">Returned Bottles</Label>
+                <Label htmlFor="returned" className="text-sm">Returned Bottles</Label>
                 <Input
                   id="returned"
                   type="text"
@@ -899,43 +912,37 @@ export function ProductForm({
                   value={returnedBottles === 0 ? '' : returnedBottles}
                   onChange={handleIntegerChange((val) => setBottleInfo("returned", Math.max(0, val)))}
                 />
-                <p className="text-xs text-muted-foreground">Added back to inventory</p>
               </div>
             </div>
 
             <div className="flex flex-col gap-2">
-              <Label htmlFor="notes">Stock Notes</Label>
+              <Label htmlFor="notes" className="text-sm">Stock Notes</Label>
               <Textarea
                 id="notes"
-                placeholder="Record any issues, discrepancies, or important notes about stock condition..."
+                placeholder="Record any issues, discrepancies, or important notes..."
                 value={v.bottleInfo?.notes || ""}
                 onChange={(e) => setBottleInfo("notes", e.target.value)}
                 rows={2}
               />
             </div>
 
-            <div className="rounded-md bg-background p-3">
-              <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
-                <div>
-                  <div className="text-muted-foreground">Total Capacity</div>
-                  <div className="font-semibold">{totalCapacity} bottles</div>
-                  <div className="text-xs text-muted-foreground">
-                    ({v.fullCases} full + {(v.partialCases || []).length} partial)
-                  </div>
-                </div>
-                <div>
-                  <div className="text-muted-foreground">Available</div>
-                  <div className="font-semibold text-green-600">{availableBottles} bottles</div>
-                </div>
-                <div>
-                  <div className="text-muted-foreground">Lost/Damaged</div>
-                  <div className="font-semibold text-destructive">{missingBottles + damagedBottles} bottles</div>
-                </div>
-                <div>
-                  <div className="text-muted-foreground">Integrity</div>
-                  <div className={`font-semibold ${stockIntegrity < 90 ? "text-orange-500" : "text-green-600"}`}>
-                    {Math.round(stockIntegrity)}%
-                  </div>
+            <div className="grid grid-cols-2 gap-3 rounded-lg bg-muted/30 p-3 sm:grid-cols-4">
+              <div>
+                <div className="text-xs text-muted-foreground">Total Capacity</div>
+                <div className="font-semibold">{totalCapacity} bottles</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground">Available</div>
+                <div className="font-semibold text-green-600">{availableBottles}</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground">Lost/Damaged</div>
+                <div className="font-semibold text-destructive">{missingBottles + damagedBottles}</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground">Integrity</div>
+                <div className={cn("font-semibold", stockIntegrity < 90 ? "text-orange-500" : "text-green-600")}>
+                  {Math.round(stockIntegrity)}%
                 </div>
               </div>
             </div>
@@ -946,19 +953,21 @@ export function ProductForm({
                 <AlertDescription>{errors.bottles}</AlertDescription>
               </Alert>
             )}
-          </div>
+          </Card>
         )}
       </div>
+    </div>
+  )
 
-      {/* Pricing Section - Per Container */}
-      <div className="space-y-4">
-        <h3 className="text-lg font-semibold">Pricing</h3>
-        
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <div className="flex w-full flex-col gap-2">
-            <Label htmlFor="purchasePerContainer">
-              Purchase price per {containerConfig.containerLabel} (RWF) *
-            </Label>
+  const renderPricing = () => (
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="purchasePerContainer" className="text-sm font-medium">
+            Purchase Price per {containerConfig.containerLabel} <span className="text-destructive">*</span>
+          </Label>
+          <div className="relative">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">RWF</span>
             <Input
               id="purchasePerContainer"
               type="text"
@@ -967,17 +976,20 @@ export function ProductForm({
               placeholder="0"
               value={(v.purchasePricePerContainer ?? 0) === 0 ? '' : v.purchasePricePerContainer}
               onChange={handleNumberChange((val) => set("purchasePricePerContainer", Math.max(0, val)))}
-              className={errors.purchasePricePerContainer ? "border-destructive" : ""}
+              className={cn("pl-12", errors.purchasePricePerContainer && "border-destructive")}
             />
-            {errors.purchasePricePerContainer && (
-              <p className="text-xs text-destructive">{errors.purchasePricePerContainer}</p>
-            )}
           </div>
-          
-          <div className="flex w-full flex-col gap-2">
-            <Label htmlFor="sellingPerContainer">
-              Selling price per {containerConfig.containerLabel} (RWF) *
-            </Label>
+          {errors.purchasePricePerContainer && (
+            <p className="text-xs text-destructive">{errors.purchasePricePerContainer}</p>
+          )}
+        </div>
+        
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="sellingPerContainer" className="text-sm font-medium">
+            Selling Price per {containerConfig.containerLabel} <span className="text-destructive">*</span>
+          </Label>
+          <div className="relative">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">RWF</span>
             <Input
               id="sellingPerContainer"
               type="text"
@@ -986,15 +998,18 @@ export function ProductForm({
               placeholder="0"
               value={(v.sellingPricePerContainer ?? 0) === 0 ? '' : v.sellingPricePerContainer}
               onChange={handleNumberChange((val) => set("sellingPricePerContainer", Math.max(0, val)))}
-              className={errors.sellingPricePerContainer ? "border-destructive" : ""}
+              className={cn("pl-12", errors.sellingPricePerContainer && "border-destructive")}
             />
-            {errors.sellingPricePerContainer && (
-              <p className="text-xs text-destructive">{errors.sellingPricePerContainer}</p>
-            )}
           </div>
-          
-          <div className="flex w-full flex-col gap-2">
-            <Label htmlFor="deposit">Deposit Amount (RWF)</Label>
+          {errors.sellingPricePerContainer && (
+            <p className="text-xs text-destructive">{errors.sellingPricePerContainer}</p>
+          )}
+        </div>
+        
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="deposit" className="text-sm font-medium">Deposit Amount</Label>
+          <div className="relative">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">RWF</span>
             <Input
               id="deposit"
               type="text"
@@ -1003,91 +1018,183 @@ export function ProductForm({
               placeholder="0"
               value={v.depositAmount === 0 ? '' : v.depositAmount}
               onChange={handleNumberChange((val) => set("depositAmount", Math.max(0, val)))}
+              className="pl-12"
             />
-            <p className="text-xs text-muted-foreground">
-              Per {containerConfig.containerLabel.toLowerCase()}
-            </p>
           </div>
+          <p className="text-xs text-muted-foreground">
+            Per {containerConfig.containerLabel.toLowerCase()}
+          </p>
         </div>
-
-        {/* Profit Margin Display */}
-        {(v.sellingPricePerContainer ?? 0) > 0 && (v.purchasePricePerContainer ?? 0) > 0 && (
-          <div className="rounded-md bg-blue-50 p-3">
-            <div className="flex items-center gap-2 text-sm">
-              <TrendingUp className="size-4 text-blue-600" />
-              <div>
-                <span className="font-medium text-blue-900">Profit Margin: </span>
-                <span className="text-blue-900">{profitMarginPerContainer.toFixed(1)}%</span>
-                <span className="ml-2 text-blue-700">
-                  ({formatCurrency((v.sellingPricePerContainer ?? 0) - (v.purchasePricePerContainer ?? 0))} per {containerConfig.containerLabel.toLowerCase()})
-                </span>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
 
-      {/* Tracking Information Section */}
-      <div className="space-y-4">
-        <h3 className="text-lg font-semibold">Tracking Information</h3>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <div className="flex w-full flex-col gap-2">
-            <Label htmlFor="batch">Batch number *</Label>
-            <Input 
-              id="batch" 
-              value={v.batchNumber} 
-              autoComplete="off"
-              onChange={(e) => set("batchNumber", e.target.value)} 
-              className={errors.batchNumber ? "border-destructive" : ""}
-              placeholder="e.g., BATCH-2024-001"
-            />
-            {errors.batchNumber && <p className="text-xs text-destructive">{errors.batchNumber}</p>}
+      {(v.sellingPricePerContainer ?? 0) > 0 && (v.purchasePricePerContainer ?? 0) > 0 && (
+        <Card className="p-4 border-green-200 bg-green-50 dark:bg-green-950/20">
+          <div className="flex items-center gap-3">
+            <TrendingUp className="size-5 text-green-600" />
+            <div>
+              <p className="text-sm font-medium text-green-900 dark:text-green-100">
+                Profit Margin: {profitMarginPerContainer.toFixed(1)}%
+              </p>
+              <p className="text-xs text-green-700 dark:text-green-300">
+                {formatCurrency((v.sellingPricePerContainer ?? 0) - (v.purchasePricePerContainer ?? 0))} per {containerConfig.containerLabel.toLowerCase()}
+              </p>
+              <p className="text-xs text-green-600 dark:text-green-400">
+                {formatCurrency((v.sellingPricePerContainer ?? 0) / BOTTLES_PER_CONTAINER)} per bottle
+              </p>
+            </div>
           </div>
-          
-          <div className="flex w-full flex-col gap-2">
-            <Label htmlFor="threshold">Low stock threshold ({containerConfig.containerLabel}s)</Label>
-            <Input
-              id="threshold"
-              type="text"
-              inputMode="numeric"
-              autoComplete="off"
-              placeholder="40"
-              value={v.lowStockThreshold === 0 ? '' : v.lowStockThreshold}
-              onChange={handleIntegerChange((val) => set("lowStockThreshold", Math.max(0, val)))}
-            />
-            <p className="text-xs text-muted-foreground">
-              Alert when stock falls below {v.lowStockThreshold} {containerConfig.containerLabel.toLowerCase()}s
-            </p>
-          </div>
-          
-          <div className="flex w-full flex-col gap-2">
-            <Label htmlFor="mfg">Manufacture date</Label>
+        </Card>
+      )}
+    </div>
+  )
+
+  const renderTracking = () => (
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="batch" className="text-sm font-medium">
+            Batch Number <span className="text-destructive">*</span>
+          </Label>
+          <Input 
+            id="batch" 
+            value={v.batchNumber} 
+            autoComplete="off"
+            onChange={(e) => set("batchNumber", e.target.value)} 
+            className={cn(errors.batchNumber && "border-destructive")}
+            placeholder="e.g., BATCH-2024-001"
+          />
+          {errors.batchNumber && <p className="text-xs text-destructive">{errors.batchNumber}</p>}
+        </div>
+        
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="threshold" className="text-sm font-medium">
+            Low Stock Threshold ({containerConfig.containerLabel}s)
+          </Label>
+          <Input
+            id="threshold"
+            type="text"
+            inputMode="numeric"
+            autoComplete="off"
+            placeholder="40"
+            value={v.lowStockThreshold === 0 ? '' : v.lowStockThreshold}
+            onChange={handleIntegerChange((val) => set("lowStockThreshold", Math.max(0, val)))}
+          />
+          <p className="text-xs text-muted-foreground">
+            Alert when below {v.lowStockThreshold} {containerConfig.containerLabel.toLowerCase()}s
+          </p>
+        </div>
+        
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="mfg" className="text-sm font-medium">Manufacture Date</Label>
+          <div className="relative">
+            <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
             <Input
               id="mfg"
               type="date"
               value={toDateInput(v.manufactureDate)}
               onChange={(e) => set("manufactureDate", e.target.value)}
+              className="pl-10"
             />
           </div>
-          
-          <div className="flex w-full flex-col gap-2">
-            <Label htmlFor="exp">Expiry date *</Label>
+        </div>
+        
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="exp" className="text-sm font-medium">
+            Expiry Date <span className="text-destructive">*</span>
+          </Label>
+          <div className="relative">
+            <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
             <Input
               id="exp"
               type="date"
               value={toDateInput(v.expiryDate)}
               onChange={(e) => set("expiryDate", e.target.value)}
-              className={errors.expiryDate ? "border-destructive" : ""}
+              className={cn("pl-10", errors.expiryDate && "border-destructive")}
             />
-            {errors.expiryDate && <p className="text-xs text-destructive">{errors.expiryDate}</p>}
           </div>
+          {errors.expiryDate && <p className="text-xs text-destructive">{errors.expiryDate}</p>}
         </div>
       </div>
+    </div>
+  )
 
-      {/* Submit Button */}
-      <Button type="submit" className="mt-4 self-end">
-        {submitLabel}
-      </Button>
+  return (
+    <form onSubmit={handleSubmit} className="space-y-8">
+      {/* Progress Bar */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium">
+              Step {currentStep + 1} of {STEPS.length}
+            </span>
+            <Badge variant="secondary" className="text-xs">
+              {STEPS[currentStep].label}
+            </Badge>
+          </div>
+          <div className="flex items-center gap-2">
+            {STEPS.map((step, index) => (
+              <button
+                key={step.id}
+                type="button"
+                onClick={() => {
+                  if (isStepValid(index) || index <= currentStep) {
+                    setCurrentStep(index)
+                  }
+                }}
+                className={cn(
+                  "flex size-8 items-center justify-center rounded-full text-xs font-medium transition-all",
+                  index === currentStep && "bg-primary text-primary-foreground",
+                  index < currentStep && "bg-primary/20 text-primary",
+                  index > currentStep && "bg-muted text-muted-foreground",
+                  !isStepValid(index) && index > currentStep && "opacity-50 cursor-not-allowed"
+                )}
+                disabled={!isStepValid(index) && index > currentStep}
+              >
+                {index < currentStep ? <Check className="size-4" /> : index + 1}
+              </button>
+            ))}
+          </div>
+        </div>
+        <Progress value={((currentStep + 1) / STEPS.length) * 100} className="h-1.5" />
+      </div>
+
+      {/* Step Content */}
+      <div className="min-h-[400px]">
+        {renderStep()}
+      </div>
+
+      {/* Navigation Buttons */}
+      <div className="flex items-center justify-between border-t pt-6">
+        <Button
+          type="button"
+          variant="outline"
+          onClick={prevStep}
+          disabled={currentStep === 0}
+          className="gap-2"
+        >
+          <ChevronLeft className="size-4" />
+          Previous
+        </Button>
+        
+        <div className="flex items-center gap-3">
+          {currentStep === STEPS.length - 1 ? (
+            <Button type="submit" className="gap-2">
+              <Check className="size-4" />
+              {submitLabel}
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              onClick={nextStep}
+              disabled={!isStepValid(currentStep)}
+              className="gap-2"
+            >
+              Next
+              <ChevronRight className="size-4" />
+            </Button>
+          )}
+        </div>
+      </div>
     </form>
   )
 }
