@@ -3,19 +3,14 @@
 import { useMemo, useState } from "react"
 import { toast } from "sonner"
 import { 
-  FileText, Download, Printer, Calendar, TrendingUp, 
-  DollarSign, Package, Users, Truck, AlertCircle, 
-  BarChart3, PieChart, LineChart as LineChartIcon,
-  ShoppingCart, RefreshCw, Filter, ChevronRight,
-  Eye, FileSpreadsheet, FileJson, Receipt, Building,
-  Clock, CheckCircle, XCircle, ArrowLeft, Home,
-  Sparkles, Zap, Target, Award, Activity, Layers,
-  Grid3x3, BarChart4, PieChartIcon, BottleWine, 
-  PlusCircle, MinusCircle, RotateCcw, AlertTriangle as AlertTriangleIcon,
-  Wallet, CreditCard, Banknote, Landmark, ReceiptText,
-  ChartColumn, ChartBar, ChartLine, ChartPie,
-  TrendingDown, ArrowUpRight, ArrowDownRight,
-  Percent, Calculator, Briefcase
+  FileText, Download, Calendar, TrendingUp, 
+  DollarSign, Package, AlertCircle, 
+  BarChart3, RefreshCw, ChevronRight,
+  Eye, FileText as FileTextIcon, 
+  Sparkles, Zap, Activity, Layers,
+  BottleWine, AlertTriangle as AlertTriangleIcon,
+  Wallet, TrendingDown, Percent, Building,
+  Box, ClipboardList, Receipt, Truck
 } from "lucide-react"
 import { useApp } from "@/lib/store"
 import { formatCurrency, formatDate, formatNumber, daysUntil } from "@/lib/format"
@@ -75,18 +70,8 @@ import {
 } from "recharts"
 
 // Types
-type ReportType = "financial" | "sales" | "expenses" | "inventory" | "empty-cases" | "profit-loss" | "customers" | "suppliers"
+type ReportType = "financial" | "inventory"
 type Period = "daily" | "weekly" | "monthly" | "quarterly" | "yearly" | "custom"
-
-interface ReportFilters {
-  type: ReportType
-  period: Period
-  startDate: Date
-  endDate: Date
-  category?: string
-  customerId?: string
-  productId?: string
-}
 
 interface BottleInfo {
   damaged: number
@@ -107,9 +92,13 @@ interface ExtendedProduct {
   expiryDate: string
   batchNumber: string
   bottleInfo?: BottleInfo
-  lastStockCheck?: Date
+  lastStockCheck?: Date | string
   depositAmount?: number
   lowStockThreshold?: number
+  bottlesPerContainer?: number
+  containerType?: "case" | "box"
+  containerSizeLabel?: string
+  bottleType?: "small" | "grand"
 }
 
 interface ReportData {
@@ -121,11 +110,6 @@ interface ReportData {
     totalSales: number
     totalTransactions: number
     avgOrderValue: number
-    totalEmptyCases: number
-    returnedCases: number
-    pendingReturns: number
-    depositValue: number
-    refundedValue: number
     totalBottles: number
     missingBottles: number
     damagedBottles: number
@@ -134,28 +118,25 @@ interface ReportData {
     totalProducts: number
     lowStockCount: number
     expiringCount: number
+    totalFullCases: number
+    totalEmptyCases: number
+    totalDepositValue: number
   }
   charts: {
-    salesTrend: { date: string; amount: number; count: number }[]
     revenueExpenses: { month: string; revenue: number; expenses: number; profit: number }[]
+    salesTrend: { date: string; amount: number; count: number }[]
     categoryBreakdown: { name: string; value: number; color: string }[]
     topProducts: { name: string; quantity: number; revenue: number }[]
-    topCustomers: { name: string; spent: number; transactions: number }[]
-    expenseBreakdown: { name: string; amount: number; color: string }[]
-    paymentMethods: { name: string; value: number; color: string }[]
     stockStatus: { name: string; value: number; color: string }[]
     bottleIssues: { name: string; missing: number; damaged: number; returned: number }[]
-    dailySales: { date: string; amount: number }[]
   }
   tables: {
     recentTransactions: any[]
-    pendingReturns: any[]
-    expiringProducts: any[]
-    supplierPayments: any[]
-    bottleIssuesList: any[]
     lowStockProducts: any[]
+    expiringProducts: any[]
+    bottleIssuesList: any[]
     topSellingItems: any[]
-    expenseItems: any[]
+    inventorySummary: any[]
   }
 }
 
@@ -188,51 +169,9 @@ const formatDateForInput = (date: Date): string => {
   return date.toISOString().split('T')[0]
 }
 
-// Clean number input helper
-const cleanNumberInput = (value: string): string => {
-  let cleaned = value.replace(/^0+(?=\d)/, '')
-  cleaned = cleaned.replace(/[^0-9.]/g, '')
-  const parts = cleaned.split('.')
-  if (parts.length > 2) {
-    cleaned = parts[0] + '.' + parts.slice(1).join('')
-  }
-  return cleaned
-}
-
 // Quick Stats Cards
-function QuickStatsCards() {
-  const { products, sales = [], expenses = [] } = useApp()
-  
-  const stats = useMemo(() => {
-    const completedSales = (sales || []).filter(s => s.status === "completed")
-    const totalRevenue = completedSales.reduce((sum, s) => sum + (s.total || 0), 0)
-    const totalExpenses = (expenses || []).reduce((sum, e) => sum + (e.amount || 0), 0)
-    const totalProducts = products.length
-    const lowStock = products.filter(p => p.fullCases < (p.lowStockThreshold || 40)).length
-    
-    const totalBottles = products.reduce((sum, p) => {
-      const extendedP = p as ExtendedProduct
-      const totalPossible = (p.fullCases || 0) * BOTTLES_PER_CASE
-      const missing = (extendedP.bottleInfo?.missing || 0)
-      const damaged = (extendedP.bottleInfo?.damaged || 0)
-      return sum + (totalPossible - missing - damaged)
-    }, 0)
-    
-    const missingBottles = products.reduce((sum, p) => {
-      const extendedP = p as ExtendedProduct
-      return sum + (extendedP.bottleInfo?.missing || 0)
-    }, 0)
-    
-    return {
-      revenue: totalRevenue,
-      expenses: totalExpenses,
-      profit: totalRevenue - totalExpenses,
-      products: totalProducts,
-      lowStock,
-      totalBottles,
-      missingBottles,
-    }
-  }, [products, sales, expenses])
+function QuickStatsCards({ data }: { data: ReportData | null }) {
+  if (!data) return null
   
   return (
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -240,7 +179,7 @@ function QuickStatsCards() {
         <div className="flex items-center justify-between">
           <div>
             <p className="text-sm text-green-700 dark:text-green-400">Total Revenue</p>
-            <p className="text-2xl font-bold text-green-800 dark:text-green-300">{formatCurrency(stats.revenue)}</p>
+            <p className="text-2xl font-bold text-green-800 dark:text-green-300">{formatCurrency(data.summary.totalRevenue)}</p>
           </div>
           <div className="p-2 bg-green-200 dark:bg-green-800 rounded-lg">
             <DollarSign className="size-5 text-green-700 dark:text-green-300" />
@@ -251,11 +190,25 @@ function QuickStatsCards() {
       <Card className="p-4 bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-950/20 dark:to-blue-900/20 border-blue-200 dark:border-blue-800">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-sm text-blue-700 dark:text-blue-400">Total Bottles</p>
-            <p className="text-2xl font-bold text-blue-800 dark:text-blue-300">{formatNumber(stats.totalBottles)}</p>
+            <p className="text-sm text-blue-700 dark:text-blue-400">Net Profit</p>
+            <p className={`text-2xl font-bold ${data.summary.netProfit >= 0 ? "text-blue-800 dark:text-blue-300" : "text-red-600 dark:text-red-400"}`}>
+              {formatCurrency(data.summary.netProfit)}
+            </p>
           </div>
           <div className="p-2 bg-blue-200 dark:bg-blue-800 rounded-lg">
-            <BottleWine className="size-5 text-blue-700 dark:text-blue-300" />
+            <TrendingUp className="size-5 text-blue-700 dark:text-blue-300" />
+          </div>
+        </div>
+      </Card>
+      
+      <Card className="p-4 bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-950/20 dark:to-purple-900/20 border-purple-200 dark:border-purple-800">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm text-purple-700 dark:text-purple-400">Total Bottles</p>
+            <p className="text-2xl font-bold text-purple-800 dark:text-purple-300">{formatNumber(data.summary.totalBottles)}</p>
+          </div>
+          <div className="p-2 bg-purple-200 dark:bg-purple-800 rounded-lg">
+            <BottleWine className="size-5 text-purple-700 dark:text-purple-300" />
           </div>
         </div>
       </Card>
@@ -263,61 +216,14 @@ function QuickStatsCards() {
       <Card className="p-4 bg-gradient-to-br from-orange-50 to-orange-100 dark:from-orange-950/20 dark:to-orange-900/20 border-orange-200 dark:border-orange-800">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-sm text-orange-700 dark:text-orange-400">Missing Bottles</p>
-            <p className="text-2xl font-bold text-orange-800 dark:text-orange-300">{formatNumber(stats.missingBottles)}</p>
+            <p className="text-sm text-orange-700 dark:text-orange-400">Low Stock Items</p>
+            <p className="text-2xl font-bold text-orange-800 dark:text-orange-300">{data.summary.lowStockCount}</p>
           </div>
           <div className="p-2 bg-orange-200 dark:bg-orange-800 rounded-lg">
             <AlertTriangleIcon className="size-5 text-orange-700 dark:text-orange-300" />
           </div>
         </div>
       </Card>
-      
-      <Card className="p-4 bg-gradient-to-br from-red-50 to-red-100 dark:from-red-950/20 dark:to-red-900/20 border-red-200 dark:border-red-800">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm text-red-700 dark:text-red-400">Low Stock Items</p>
-            <p className="text-2xl font-bold text-red-800 dark:text-red-300">{stats.lowStock}</p>
-          </div>
-          <div className="p-2 bg-red-200 dark:bg-red-800 rounded-lg">
-            <Package className="size-5 text-red-700 dark:text-red-300" />
-          </div>
-        </div>
-      </Card>
-    </div>
-  )
-}
-
-// Report Templates
-function ReportTemplates({ onSelectTemplate }: { onSelectTemplate: (type: ReportType, period: Period) => void }) {
-  const templates = [
-    { icon: TrendingUp, label: "Financial Summary", type: "financial" as ReportType, period: "monthly" as Period, color: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" },
-    { icon: ShoppingCart, label: "Sales Report", type: "sales" as ReportType, period: "daily" as Period, color: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400" },
-    { icon: Package, label: "Inventory Report", type: "inventory" as ReportType, period: "weekly" as Period, color: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400" },
-    { icon: DollarSign, label: "Profit & Loss", type: "profit-loss" as ReportType, period: "monthly" as Period, color: "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400" },
-    { icon: Receipt, label: "Expense Report", type: "expenses" as ReportType, period: "monthly" as Period, color: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" },
-    { icon: BottleWine, label: "Empty Cases", type: "empty-cases" as ReportType, period: "monthly" as Period, color: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400" },
-    { icon: Users, label: "Top Customers", type: "customers" as ReportType, period: "monthly" as Period, color: "bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-400" },
-    { icon: Truck, label: "Supplier Report", type: "suppliers" as ReportType, period: "monthly" as Period, color: "bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-400" },
-  ]
-  
-  return (
-    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-      {templates.map((template, index) => (
-        <button
-          key={index}
-          onClick={() => onSelectTemplate(template.type, template.period)}
-          className="group flex items-center gap-3 p-4 rounded-xl border border-border bg-card hover:border-primary hover:shadow-md transition-all text-left"
-        >
-          <div className={`p-2 rounded-lg ${template.color}`}>
-            <template.icon className="size-5" />
-          </div>
-          <div className="flex-1">
-            <p className="font-medium text-sm">{template.label}</p>
-            <p className="text-xs text-muted-foreground">Quick generation</p>
-          </div>
-          <ChevronRight className="size-4 text-muted-foreground group-hover:translate-x-1 transition-transform" />
-        </button>
-      ))}
     </div>
   )
 }
@@ -325,10 +231,8 @@ function ReportTemplates({ onSelectTemplate }: { onSelectTemplate: (type: Report
 export default function ReportsPage() {
   const { 
     products, 
-    customers, 
     sales = [], 
     expenses = [],
-    emptyCaseTransactions = [],
     suppliers = []
   } = useApp()
 
@@ -372,14 +276,7 @@ export default function ReportsPage() {
     }
   }
 
-  const handleSelectTemplate = (type: ReportType, period: Period) => {
-    setReportType(type)
-    setPeriod(period)
-    generateReport(type, period as ReportType)
-  }
-
-  const generateReport = (type?: ReportType, period?: ReportType) => {
-    const finalType = type || reportType
+  const generateReport = () => {
     setGenerating(true)
     
     setTimeout(() => {
@@ -395,14 +292,12 @@ export default function ReportsPage() {
         return expenseDate >= startDate && expenseDate <= endDate
       })
       
-      const filteredEmptyCases = (emptyCaseTransactions || []).filter(t => {
-        const txnDate = new Date(t.createdAt)
-        return txnDate >= startDate && txnDate <= endDate
-      })
-      
-      // Extended products with bottle info
       const extendedProducts = products as ExtendedProduct[]
-      const totalPossibleBottles = extendedProducts.reduce((sum, p) => sum + (p.fullCases * BOTTLES_PER_CASE), 0)
+      const totalFullCases = extendedProducts.reduce((sum, p) => sum + (p.fullCases || 0), 0)
+      const totalEmptyCases = extendedProducts.reduce((sum, p) => sum + (p.emptyCases || 0), 0)
+      const totalDepositValue = extendedProducts.reduce((sum, p) => sum + ((p.emptyCases || 0) * (p.depositAmount || 0)), 0)
+      
+      const totalPossibleBottles = extendedProducts.reduce((sum, p) => sum + ((p.fullCases || 0) * BOTTLES_PER_CASE), 0)
       const totalMissingBottles = extendedProducts.reduce((sum, p) => sum + (p.bottleInfo?.missing || 0), 0)
       const totalDamagedBottles = extendedProducts.reduce((sum, p) => sum + (p.bottleInfo?.damaged || 0), 0)
       const totalReturnedBottles = extendedProducts.reduce((sum, p) => sum + (p.bottleInfo?.returned || 0), 0)
@@ -418,12 +313,6 @@ export default function ReportsPage() {
       const totalTransactions = filteredSales.length
       const avgOrderValue = totalTransactions > 0 ? totalRevenue / totalTransactions : 0
       
-      const totalEmptyCases = filteredEmptyCases.reduce((sum, t) => sum + (t.totalQuantity || 0), 0)
-      const returnedCases = filteredEmptyCases.reduce((sum, t) => sum + (t.returnedQuantity || 0), 0)
-      const pendingReturns = totalEmptyCases - returnedCases
-      const depositValue = filteredEmptyCases.reduce((sum, t) => sum + (t.totalDepositValue || 0), 0)
-      const refundedValue = filteredEmptyCases.reduce((sum, t) => sum + (t.refundedAmount || 0), 0)
-      
       const totalProducts = products.length
       const lowStockCount = products.filter(p => p.fullCases < (p.lowStockThreshold || 40)).length
       const expiringCount = products.filter(p => {
@@ -432,7 +321,7 @@ export default function ReportsPage() {
         return daysLeft >= 0 && daysLeft <= 30
       }).length
       
-      // FIXED: Revenue vs Expenses trend - Month names only (January to December)
+      // Revenue vs Expenses trend - Month names only (January to December)
       const monthAggregate = new Map<number, { 
         month: string; 
         revenue: number; 
@@ -441,7 +330,6 @@ export default function ReportsPage() {
         monthIndex: number;
       }>()
       
-      // Initialize all months
       const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 
                          'July', 'August', 'September', 'October', 'November', 'December']
       
@@ -455,7 +343,6 @@ export default function ReportsPage() {
         })
       }
       
-      // Aggregate sales by month
       filteredSales.forEach(sale => {
         const date = new Date(sale.createdAt)
         const monthIndex = date.getMonth()
@@ -466,7 +353,6 @@ export default function ReportsPage() {
         }
       })
       
-      // Aggregate expenses by month
       filteredExpenses.forEach(expense => {
         const date = new Date(expense.date)
         const monthIndex = date.getMonth()
@@ -500,12 +386,6 @@ export default function ReportsPage() {
       const salesTrend = Array.from(salesByDate.entries())
         .map(([date, data]) => ({ date, amount: data.amount, count: data.count }))
         .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-      
-      // Daily sales for heatmap
-      const dailySales = filteredSales.map(sale => ({
-        date: new Date(sale.createdAt).toLocaleDateString(),
-        amount: sale.total || 0
-      }))
       
       // Category breakdown
       const categoryMap = new Map<string, number>()
@@ -550,55 +430,6 @@ export default function ReportsPage() {
         .sort((a, b) => b.quantity - a.quantity)
         .slice(0, 5)
       
-      // Top customers
-      const customerSales = new Map<string, { name: string; spent: number; transactions: number }>()
-      filteredSales.forEach(sale => {
-        const customerId = sale.customerId || "walk-in"
-        const existing = customerSales.get(customerId)
-        if (existing) {
-          existing.spent += sale.total || 0
-          existing.transactions += 1
-        } else {
-          customerSales.set(customerId, {
-            name: sale.customerName || "Walk-in Customer",
-            spent: sale.total || 0,
-            transactions: 1
-          })
-        }
-      })
-      
-      const topCustomers = Array.from(customerSales.values())
-        .sort((a, b) => b.spent - a.spent)
-        .slice(0, 5)
-      
-      // Expense breakdown
-      const expenseByCategory = new Map<string, number>()
-      filteredExpenses.forEach(expense => {
-        const category = expense.category || "other"
-        expenseByCategory.set(category, (expenseByCategory.get(category) || 0) + (expense.amount || 0))
-      })
-      
-      const expenseBreakdown = Array.from(expenseByCategory.entries()).map(([name, amount], index) => ({
-        name: safeCapitalize(name),
-        amount,
-        color: COLORS[(index + 3) % COLORS.length]
-      }))
-      
-      // Payment methods
-      const paymentMethodMap = new Map<string, number>()
-      filteredSales.forEach(sale => {
-        const method = sale.paymentMethod || "cash"
-        paymentMethodMap.set(method, (paymentMethodMap.get(method) || 0) + (sale.total || 0))
-      })
-      
-      const paymentMethods = Array.from(paymentMethodMap.entries())
-        .filter(([name]) => name && typeof name === 'string' && name.length > 0)
-        .map(([name, value], index) => ({
-          name: safeCapitalize(name),
-          value,
-          color: COLORS[(index + 5) % COLORS.length]
-        }))
-      
       // Stock status breakdown
       const stockStatus = [
         { name: "Available", value: totalAvailableBottles, color: "#10b981" },
@@ -626,17 +457,6 @@ export default function ReportsPage() {
         status: sale.status || "completed"
       }))
       
-      const pendingReturnsList = filteredEmptyCases
-        .filter(t => (t.pendingQuantity || 0) > 0)
-        .slice(0, 10)
-        .map(t => ({
-          customer: t.customerName || "Unknown",
-          product: t.productName || "Unknown Product",
-          total: t.totalQuantity || 0,
-          pending: t.pendingQuantity || 0,
-          depositValue: (t.pendingQuantity || 0) * (t.depositAmount || 0)
-        }))
-      
       const expiringProducts = products
         .filter(p => {
           if (!p.expiryDate) return false
@@ -650,16 +470,6 @@ export default function ReportsPage() {
           expiryDate: safeFormatDate(p.expiryDate),
           stock: p.fullCases || 0,
           daysLeft: daysUntil(p.expiryDate)
-        }))
-      
-      const supplierPayments = filteredExpenses
-        .filter(e => e.category === "supplier" && e.supplierName)
-        .slice(0, 10)
-        .map(e => ({
-          supplier: e.supplierName || "Unknown",
-          amount: e.amount || 0,
-          date: safeFormatDate(e.date),
-          invoice: e.invoiceNumber || "-"
         }))
       
       const lowStockProducts = products
@@ -687,14 +497,15 @@ export default function ReportsPage() {
         .sort((a, b) => b.revenue - a.revenue)
         .slice(0, 10)
       
-      const expenseItems = filteredExpenses
-        .slice(0, 10)
-        .map(e => ({
-          description: e.note || "N/A",
-          category: e.category || "other",
-          amount: e.amount || 0,
-          date: safeFormatDate(e.date)
-        }))
+      const inventorySummary = extendedProducts.slice(0, 10).map(p => ({
+        name: p.name,
+        brand: p.brand,
+        fullCases: p.fullCases,
+        emptyCases: p.emptyCases,
+        bottles: (p.fullCases || 0) * BOTTLES_PER_CASE,
+        missing: p.bottleInfo?.missing || 0,
+        damaged: p.bottleInfo?.damaged || 0
+      }))
       
       setReportData({
         summary: {
@@ -705,11 +516,6 @@ export default function ReportsPage() {
           totalSales,
           totalTransactions,
           avgOrderValue,
-          totalEmptyCases,
-          returnedCases,
-          pendingReturns,
-          depositValue,
-          refundedValue,
           totalBottles: totalAvailableBottles,
           missingBottles: totalMissingBottles,
           damagedBottles: totalDamagedBottles,
@@ -717,29 +523,26 @@ export default function ReportsPage() {
           stockIntegrity,
           totalProducts,
           lowStockCount,
-          expiringCount
+          expiringCount,
+          totalFullCases,
+          totalEmptyCases,
+          totalDepositValue
         },
         charts: {
-          salesTrend,
           revenueExpenses,
+          salesTrend,
           categoryBreakdown,
           topProducts,
-          topCustomers,
-          expenseBreakdown,
-          paymentMethods,
           stockStatus,
-          bottleIssues,
-          dailySales
+          bottleIssues
         },
         tables: {
           recentTransactions,
-          pendingReturns: pendingReturnsList,
-          expiringProducts,
-          supplierPayments,
-          bottleIssuesList,
           lowStockProducts,
+          expiringProducts,
+          bottleIssuesList,
           topSellingItems,
-          expenseItems
+          inventorySummary
         }
       })
       
@@ -748,39 +551,16 @@ export default function ReportsPage() {
     }, 1000)
   }
 
-  const exportCSV = () => {
-    if (!reportData) return
-    
-    const data = reportData.tables.recentTransactions.map(t => ({
-      "Date": t.date,
-      "Invoice": t.invoice,
-      "Customer": t.customer,
-      "Amount": formatCurrency(t.amount),
-      "Status": t.status
-    }))
-    
-    if (data.length === 0) {
-      toast.error("No data to export")
+  const exportPDF = () => {
+    if (!reportData) {
+      toast.error("Please generate a report first")
       return
     }
-    
-    const headers = Object.keys(data[0]).join(",")
-    const rows = data.map(row => Object.values(row).join(","))
-    const csv = [headers, ...rows].join("\n")
-    const blob = new Blob([csv], { type: "text/csv" })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement("a")
-    a.href = url
-    a.download = `report-${new Date().toISOString().split("T")[0]}.csv`
-    a.click()
-    URL.revokeObjectURL(url)
-    toast.success("CSV exported")
+    // This would trigger the print dialog for PDF generation
+    window.print()
+    toast.info("Use 'Save as PDF' in the print dialog")
   }
 
-  const exportExcel = () => toast.info("Excel export would download here")
-  const exportPDF = () => toast.info("PDF export would download here")
-  const printReport = () => window.print()
-  
   const { startDate, endDate, label } = getDateRange()
 
   if (!reportData) {
@@ -788,12 +568,10 @@ export default function ReportsPage() {
       <>
         <DashboardHeader 
           title="Reports & Analytics" 
-          description="Generate comprehensive business reports and insights"
+          description="Generate financial and inventory reports"
         />
         
         <div className="flex flex-col gap-6 p-4 md:p-6">
-          <QuickStatsCards />
-          
           <Card className="p-6">
             <div className="flex flex-col gap-4">
               <div className="flex items-center justify-between">
@@ -804,7 +582,7 @@ export default function ReportsPage() {
                 <Sparkles className="size-8 text-primary/50" />
               </div>
               
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                 <div className="space-y-2">
                   <Label>Report Type</Label>
                   <Select value={reportType} onValueChange={(v: ReportType) => setReportType(v)}>
@@ -812,14 +590,18 @@ export default function ReportsPage() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="financial">Financial Report</SelectItem>
-                      <SelectItem value="sales">Sales Report</SelectItem>
-                      <SelectItem value="expenses">Expenses Report</SelectItem>
-                      <SelectItem value="inventory">Inventory Report</SelectItem>
-                      <SelectItem value="empty-cases">Empty Cases Report</SelectItem>
-                      <SelectItem value="profit-loss">Profit & Loss</SelectItem>
-                      <SelectItem value="customers">Customer Report</SelectItem>
-                      <SelectItem value="suppliers">Supplier Report</SelectItem>
+                      <SelectItem value="financial">
+                        <div className="flex items-center gap-2">
+                          <DollarSign className="size-4" />
+                          Financial Report
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="inventory">
+                        <div className="flex items-center gap-2">
+                          <Package className="size-4" />
+                          Inventory Report
+                        </div>
+                      </SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -842,29 +624,28 @@ export default function ReportsPage() {
                 </div>
                 
                 {period === "custom" && (
-                  <>
-                    <div className="space-y-2">
-                      <Label>Start Date</Label>
+                  <div className="space-y-2">
+                    <Label>Custom Range</Label>
+                    <div className="flex gap-2">
                       <Input
                         type="date"
                         value={formatDateForInput(customStartDate)}
                         onChange={(e) => setCustomStartDate(new Date(e.target.value))}
+                        className="flex-1"
                       />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>End Date</Label>
                       <Input
                         type="date"
                         value={formatDateForInput(customEndDate)}
                         onChange={(e) => setCustomEndDate(new Date(e.target.value))}
+                        className="flex-1"
                       />
                     </div>
-                  </>
+                  </div>
                 )}
               </div>
               
               <div className="flex justify-end">
-                <Button size="lg" onClick={() => generateReport()} disabled={generating}>
+                <Button size="lg" onClick={generateReport} disabled={generating}>
                   {generating ? (
                     <RefreshCw className="size-4 mr-2 animate-spin" />
                   ) : (
@@ -876,12 +657,40 @@ export default function ReportsPage() {
             </div>
           </Card>
           
-          <div>
-            <h2 className="text-lg font-semibold mb-3 flex items-center gap-2">
-              <Zap className="size-5 text-primary" />
-              Quick Report Templates
-            </h2>
-            <ReportTemplates onSelectTemplate={handleSelectTemplate} />
+          <div className="grid gap-4 md:grid-cols-2">
+            <button
+              onClick={() => {
+                setReportType("financial")
+                setTimeout(() => generateReport(), 100)
+              }}
+              className="group flex items-center gap-4 p-6 rounded-xl border border-border bg-card hover:border-primary hover:shadow-md transition-all text-left"
+            >
+              <div className="p-3 rounded-lg bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                <DollarSign className="size-6" />
+              </div>
+              <div className="flex-1">
+                <p className="font-semibold text-lg">Financial Report</p>
+                <p className="text-sm text-muted-foreground">Revenue, expenses, profit analysis</p>
+              </div>
+              <ChevronRight className="size-5 text-muted-foreground group-hover:translate-x-1 transition-transform" />
+            </button>
+            
+            <button
+              onClick={() => {
+                setReportType("inventory")
+                setTimeout(() => generateReport(), 100)
+              }}
+              className="group flex items-center gap-4 p-6 rounded-xl border border-border bg-card hover:border-primary hover:shadow-md transition-all text-left"
+            >
+              <div className="p-3 rounded-lg bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400">
+                <Package className="size-6" />
+              </div>
+              <div className="flex-1">
+                <p className="font-semibold text-lg">Inventory Report</p>
+                <p className="text-sm text-muted-foreground">Stock levels, bottle tracking, expiry</p>
+              </div>
+              <ChevronRight className="size-5 text-muted-foreground group-hover:translate-x-1 transition-transform" />
+            </button>
           </div>
         </div>
       </>
@@ -893,14 +702,14 @@ export default function ReportsPage() {
       <>
         <DashboardHeader 
           title="Reports & Analytics" 
-          description="Generate comprehensive business reports and insights"
+          description="Generate financial and inventory reports"
         />
         
         <div className="flex flex-col gap-6 p-4 md:p-6 print:gap-4">
           {/* Report Controls */}
           <Card className="p-6 print:hidden">
             <div className="flex flex-col gap-4">
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                 <div className="space-y-2">
                   <Label>Report Type</Label>
                   <Select value={reportType} onValueChange={(v: ReportType) => setReportType(v)}>
@@ -909,13 +718,7 @@ export default function ReportsPage() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="financial">Financial Report</SelectItem>
-                      <SelectItem value="sales">Sales Report</SelectItem>
-                      <SelectItem value="expenses">Expenses Report</SelectItem>
                       <SelectItem value="inventory">Inventory Report</SelectItem>
-                      <SelectItem value="empty-cases">Empty Cases Report</SelectItem>
-                      <SelectItem value="profit-loss">Profit & Loss</SelectItem>
-                      <SelectItem value="customers">Customer Report</SelectItem>
-                      <SelectItem value="suppliers">Supplier Report</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -938,24 +741,21 @@ export default function ReportsPage() {
                 </div>
                 
                 {period === "custom" && (
-                  <>
-                    <div className="space-y-2">
-                      <Label>Start Date</Label>
+                  <div className="space-y-2">
+                    <Label>Custom Range</Label>
+                    <div className="flex gap-2">
                       <Input
                         type="date"
                         value={formatDateForInput(customStartDate)}
                         onChange={(e) => setCustomStartDate(new Date(e.target.value))}
                       />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>End Date</Label>
                       <Input
                         type="date"
                         value={formatDateForInput(customEndDate)}
                         onChange={(e) => setCustomEndDate(new Date(e.target.value))}
                       />
                     </div>
-                  </>
+                  </div>
                 )}
               </div>
               
@@ -966,6 +766,10 @@ export default function ReportsPage() {
                 <Button onClick={() => generateReport()} disabled={generating}>
                   <RefreshCw className={`size-4 mr-2 ${generating ? "animate-spin" : ""}`} />
                   {generating ? "Generating..." : "Refresh"}
+                </Button>
+                <Button onClick={exportPDF}>
+                  <FileText className="size-4 mr-2" />
+                  Export PDF
                 </Button>
               </div>
             </div>
@@ -979,115 +783,13 @@ export default function ReportsPage() {
                 {safeFormatDate(startDate)} - {safeFormatDate(endDate)} ({label})
               </p>
             </div>
-            <div className="flex gap-2 print:hidden">
-              <Button variant="outline" size="sm" onClick={exportCSV}>
-                <FileSpreadsheet className="size-4 mr-2" />
-                CSV
-              </Button>
-              <Button variant="outline" size="sm" onClick={exportExcel}>
-                <FileJson className="size-4 mr-2" />
-                Excel
-              </Button>
-              <Button variant="outline" size="sm" onClick={exportPDF}>
-                <FileText className="size-4 mr-2" />
-                PDF
-              </Button>
-              <Button variant="outline" size="sm" onClick={printReport}>
-                <Printer className="size-4 mr-2" />
-                Print
-              </Button>
-            </div>
+            <Button variant="outline" size="sm" onClick={exportPDF} className="print:hidden">
+              <FileText className="size-4 mr-2" />
+              Export PDF
+            </Button>
           </div>
           
-          {/* Summary Cards */}
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            <Card className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Total Revenue</p>
-                  <p className="text-2xl font-bold text-green-600">{formatCurrency(reportData.summary.totalRevenue)}</p>
-                </div>
-                <DollarSign className="size-8 text-green-500" />
-              </div>
-            </Card>
-            
-            <Card className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Total Expenses</p>
-                  <p className="text-2xl font-bold text-red-600">{formatCurrency(reportData.summary.totalExpenses)}</p>
-                </div>
-                <TrendingDown className="size-8 text-red-500" />
-              </div>
-            </Card>
-            
-            <Card className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Net Profit</p>
-                  <p className={`text-2xl font-bold ${reportData.summary.netProfit >= 0 ? "text-blue-600" : "text-red-600"}`}>
-                    {formatCurrency(reportData.summary.netProfit)}
-                  </p>
-                </div>
-                <BarChart3 className="size-8 text-blue-500" />
-              </div>
-            </Card>
-            
-            <Card className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Profit Margin</p>
-                  <p className={`text-2xl font-bold ${reportData.summary.profitMargin >= 0 ? "text-green-600" : "text-red-600"}`}>
-                    {reportData.summary.profitMargin.toFixed(1)}%
-                  </p>
-                </div>
-                <Percent className="size-8 text-purple-500" />
-              </div>
-            </Card>
-          </div>
-          
-          {/* Secondary Stats */}
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            <Card className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Total Transactions</p>
-                  <p className="text-2xl font-bold">{formatNumber(reportData.summary.totalTransactions)}</p>
-                </div>
-                <ShoppingCart className="size-8 text-blue-500" />
-              </div>
-            </Card>
-            
-            <Card className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Avg Order Value</p>
-                  <p className="text-2xl font-bold">{formatCurrency(reportData.summary.avgOrderValue)}</p>
-                </div>
-                <Wallet className="size-8 text-indigo-500" />
-              </div>
-            </Card>
-            
-            <Card className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Stock Integrity</p>
-                  <p className="text-2xl font-bold text-purple-600">{reportData.summary.stockIntegrity.toFixed(1)}%</p>
-                </div>
-                <Activity className="size-8 text-purple-500" />
-              </div>
-            </Card>
-            
-            <Card className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Low Stock Items</p>
-                  <p className="text-2xl font-bold text-orange-600">{reportData.summary.lowStockCount}</p>
-                </div>
-                <AlertCircle className="size-8 text-orange-500" />
-              </div>
-            </Card>
-          </div>
+          <QuickStatsCards data={reportData} />
           
           {/* Charts Section */}
           <Tabs defaultValue="trends" className="space-y-4 print:block">
@@ -1098,7 +800,6 @@ export default function ReportsPage() {
               <TabsTrigger value="bottles">Bottle Issues</TabsTrigger>
               <TabsTrigger value="categories">Categories</TabsTrigger>
               <TabsTrigger value="products">Top Products</TabsTrigger>
-              <TabsTrigger value="expenses">Expenses</TabsTrigger>
             </TabsList>
             
             <TabsContent value="trends" className="space-y-4 print:block">
@@ -1134,29 +835,6 @@ export default function ReportsPage() {
                     <RechartsTooltip formatter={(value: number) => formatCurrency(value)} />
                     <Area type="monotone" dataKey="amount" stroke="#10b981" fill="#10b98140" name="Sales" />
                   </AreaChart>
-                </ResponsiveContainer>
-              </Card>
-              
-              <Card className="p-6">
-                <h3 className="text-lg font-semibold mb-4">Payment Methods</h3>
-                <ResponsiveContainer width="100%" height={300}>
-                  <RechartsPieChart>
-                    <Pie
-                      data={reportData.charts.paymentMethods}
-                      cx="50%"
-                      cy="50%"
-                      labelLine={false}
-                      label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                      outerRadius={120}
-                      fill="#8884d8"
-                      dataKey="value"
-                    >
-                      {reportData.charts.paymentMethods.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.color || COLORS[index % COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <RechartsTooltip formatter={(value: number) => formatCurrency(value)} />
-                  </RechartsPieChart>
                 </ResponsiveContainer>
               </Card>
             </TabsContent>
@@ -1246,31 +924,6 @@ export default function ReportsPage() {
                     <Bar dataKey="quantity" fill="#f59e0b" name="Units Sold" />
                     <Bar dataKey="revenue" fill="#10b981" name="Revenue" />
                   </BarChart>
-                </ResponsiveContainer>
-              </Card>
-            </TabsContent>
-            
-            <TabsContent value="expenses" className="space-y-4 print:block">
-              <Card className="p-6">
-                <h3 className="text-lg font-semibold mb-4">Expense Breakdown</h3>
-                <ResponsiveContainer width="100%" height={400}>
-                  <RechartsPieChart>
-                    <Pie
-                      data={reportData.charts.expenseBreakdown}
-                      cx="50%"
-                      cy="50%"
-                      labelLine={false}
-                      label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                      outerRadius={150}
-                      fill="#8884d8"
-                      dataKey="amount"
-                    >
-                      {reportData.charts.expenseBreakdown.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.color || COLORS[index % COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <RechartsTooltip formatter={(value: number) => formatCurrency(value)} />
-                  </RechartsPieChart>
                 </ResponsiveContainer>
               </Card>
             </TabsContent>
@@ -1424,6 +1077,50 @@ export default function ReportsPage() {
               </div>
             </Card>
           </div>
+          
+          {/* Inventory Summary Table */}
+          {reportType === "inventory" && (
+            <Card className="overflow-hidden">
+              <div className="p-4 border-b bg-muted/50">
+                <h3 className="font-semibold">Inventory Summary</h3>
+              </div>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Product</TableHead>
+                      <TableHead>Brand</TableHead>
+                      <TableHead className="text-right">Full Cases</TableHead>
+                      <TableHead className="text-right">Empty Cases</TableHead>
+                      <TableHead className="text-right">Total Bottles</TableHead>
+                      <TableHead className="text-right">Missing</TableHead>
+                      <TableHead className="text-right">Damaged</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {reportData.tables.inventorySummary.map((item, i) => (
+                      <TableRow key={i}>
+                        <TableCell className="font-medium">{item.name}</TableCell>
+                        <TableCell>{item.brand}</TableCell>
+                        <TableCell className="text-right">{item.fullCases}</TableCell>
+                        <TableCell className="text-right">{item.emptyCases}</TableCell>
+                        <TableCell className="text-right font-medium">{item.bottles}</TableCell>
+                        <TableCell className="text-right text-destructive">{item.missing}</TableCell>
+                        <TableCell className="text-right text-orange-500">{item.damaged}</TableCell>
+                      </TableRow>
+                    ))}
+                    {reportData.tables.inventorySummary.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                          No inventory data found
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            </Card>
+          )}
         </div>
       </>
     </TooltipProvider>

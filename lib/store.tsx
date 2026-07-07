@@ -36,7 +36,7 @@ import {
 type AppState = {
   currentUser: User | null
   ready: boolean
-  isLoading: boolean
+  isLoading: boolean // Changed from boolean | undefined to boolean
   products: Product[]
   suppliers: Supplier[]
   customers: Customer[]
@@ -96,7 +96,7 @@ const uid = () => Math.random().toString(36).slice(2, 10)
 export function AppProvider({ children }: { children: ReactNode }) {
   const [currentUser, setCurrentUser] = useState<User | null>(null)
   const [ready, setReady] = useState(false)
-  const [isLoading, setIsLoading] = useState(false)
+  const [isLoading, setIsLoading] = useState(false) // Always boolean, never undefined
   
   // Data states
   const [products, setProducts] = useState<Product[]>([])
@@ -330,7 +330,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const value = useMemo<AppState>(() => ({
     currentUser,
     ready,
-    isLoading,
+    isLoading, // This is always a boolean
     products,
     suppliers,
     customers,

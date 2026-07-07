@@ -7,7 +7,7 @@ import {
   ArrowLeft, RefreshCw, CheckCircle, Clock, AlertCircle, Package, Plus, 
   Download, FileText, TrendingUp, AlertTriangle, DollarSign, Users, 
   Calendar, Search, Filter, MoreHorizontal, Eye, Edit2, Trash2, X,
-  BarChart3, PieChart, Phone, Mail, MapPin, Building2, UserPlus
+  BarChart3, PieChart, Phone, Mail, MapPin, Building2, UserPlus, Loader2
 } from "lucide-react"
 import { useApp } from "@/lib/store"
 import { formatCurrency, formatNumber, formatDate } from "@/lib/format"
@@ -79,11 +79,13 @@ function CustomerForm({
   onSubmit, 
   onCancel,
   isEditing = false,
+  isLoading = false,
 }: { 
   customer?: Customer
   onSubmit: (data: any) => void
   onCancel: () => void
   isEditing?: boolean
+  isLoading?: boolean
 }) {
   const [formData, setFormData] = useState({
     name: customer?.name || "",
@@ -104,6 +106,7 @@ function CustomerForm({
             value={formData.name}
             onChange={(e) => setFormData({ ...formData, name: e.target.value })}
             placeholder="Enter customer name"
+            disabled={isLoading}
           />
         </div>
 
@@ -113,6 +116,7 @@ function CustomerForm({
             value={formData.phone}
             onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
             placeholder="Enter phone number"
+            disabled={isLoading}
           />
         </div>
       </div>
@@ -125,6 +129,7 @@ function CustomerForm({
             value={formData.email}
             onChange={(e) => setFormData({ ...formData, email: e.target.value })}
             placeholder="Enter email address"
+            disabled={isLoading}
           />
         </div>
 
@@ -135,6 +140,7 @@ function CustomerForm({
             onValueChange={(v: "retail" | "wholesale") => 
               setFormData({ ...formData, type: v })
             }
+            disabled={isLoading}
           >
             <SelectTrigger>
               <SelectValue />
@@ -153,6 +159,7 @@ function CustomerForm({
           value={formData.address}
           onChange={(e) => setFormData({ ...formData, address: e.target.value })}
           placeholder="Enter street address"
+          disabled={isLoading}
         />
       </div>
 
@@ -162,6 +169,7 @@ function CustomerForm({
           value={formData.city}
           onChange={(e) => setFormData({ ...formData, city: e.target.value })}
           placeholder="Enter city"
+          disabled={isLoading}
         />
       </div>
 
@@ -172,17 +180,19 @@ function CustomerForm({
           onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
           placeholder="Additional notes about this customer..."
           rows={3}
+          disabled={isLoading}
         />
       </div>
 
       <div className="flex gap-2 justify-end">
-        <Button variant="outline" onClick={onCancel}>
+        <Button variant="outline" onClick={onCancel} disabled={isLoading}>
           Cancel
         </Button>
         <Button 
           onClick={() => onSubmit(formData)}
-          disabled={!formData.name || !formData.phone}
+          disabled={!formData.name || !formData.phone || isLoading}
         >
+          {isLoading && <Loader2 className="size-4 mr-2 animate-spin" />}
           {isEditing ? "Update Customer" : "Add Customer"}
         </Button>
       </div>
@@ -203,19 +213,28 @@ export default function CustomersPage() {
     updateCustomer,
     deleteCustomer,
     setCustomers,
+    refreshData,
   } = useApp()
 
   const [isLoading, setIsLoading] = useState(false)
+  const [isDeleting, setIsDeleting] = useState<string | null>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const dataLoaded = useRef(false)
+  const deleteInProgress = useRef(false)
 
-  // Load customers from API on mount
+  // Load customers from API on mount - ONLY ONCE
   useEffect(() => {
     const loadCustomers = async () => {
+      // Skip if data is already loaded
+      if (dataLoaded.current) return
+      
       setIsLoading(true)
       setError(null)
       try {
         const data = await customersService.getAll()
         setCustomers(data)
+        dataLoaded.current = true
       } catch (err) {
         console.error('Failed to load customers:', err)
         setError('Failed to load customers from server')
@@ -226,14 +245,13 @@ export default function CustomersPage() {
     }
 
     loadCustomers()
-  }, [setCustomers])
+  }, []) // Empty dependency array - only run once on mount
 
   // API CRUD operations
   const handleAddCustomer = async (data: any) => {
-    setIsLoading(true)
+    setIsSubmitting(true)
     try {
       const newCustomer = await customersService.create(data)
-      await addCustomer(newCustomer)
       toast.success('Customer added successfully')
       return newCustomer
     } catch (err) {
@@ -241,15 +259,14 @@ export default function CustomersPage() {
       toast.error('Failed to add customer')
       throw err
     } finally {
-      setIsLoading(false)
+      setIsSubmitting(false)
     }
   }
 
   const handleUpdateCustomer = async (id: string, data: any) => {
-    setIsLoading(true)
+    setIsSubmitting(true)
     try {
       const updated = await customersService.update(id, data)
-      // Fix: Pass both id and the updated data
       await updateCustomer(id, updated)
       toast.success('Customer updated successfully')
       return updated
@@ -258,14 +275,18 @@ export default function CustomersPage() {
       toast.error('Failed to update customer')
       throw err
     } finally {
-      setIsLoading(false)
+      setIsSubmitting(false)
     }
   }
 
   const handleDeleteCustomer = async (id: string) => {
+    // Prevent multiple simultaneous delete requests
+    if (deleteInProgress.current) return
     if (!confirm('Are you sure you want to delete this customer?')) return
     
-    setIsLoading(true)
+    deleteInProgress.current = true
+    setIsDeleting(id)
+    
     try {
       await customersService.delete(id)
       await deleteCustomer(id)
@@ -274,12 +295,12 @@ export default function CustomersPage() {
       console.error('Failed to delete customer:', err)
       toast.error('Failed to delete customer')
     } finally {
-      setIsLoading(false)
+      setIsDeleting(null)
+      deleteInProgress.current = false
     }
   }
 
   const [query, setQuery] = useState("")
-  // Fix: Remove "corporate" from the filter type
   const [typeFilter, setTypeFilter] = useState<"all" | "retail" | "wholesale">("all")
   const [activeTab, setActiveTab] = useState("customers")
   
@@ -351,7 +372,7 @@ export default function CustomersPage() {
     refunded: "#10b981",
   }
 
-  // Status badge helper - Remove corporate
+  // Status badge helper
   const getTypeBadge = (type: string) => {
     const config = {
       retail: { label: "Retail", className: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400" },
@@ -529,6 +550,7 @@ export default function CustomersPage() {
                       </DialogDescription>
                     </DialogHeader>
                     <CustomerForm 
+                      isLoading={isSubmitting}
                       onSubmit={async (data) => {
                         try {
                           await handleAddCustomer(data)
@@ -558,7 +580,6 @@ export default function CustomersPage() {
                     onChange={(e) => setQuery(e.target.value)}
                   />
                 </div>
-                {/* Fix: Remove corporate from filter options */}
                 <Select value={typeFilter} onValueChange={(v: "all" | "retail" | "wholesale") => setTypeFilter(v)}>
                   <SelectTrigger className="sm:w-40">
                     <SelectValue placeholder="Filter by type" />
@@ -590,6 +611,7 @@ export default function CustomersPage() {
                   <TableBody>
                     {filteredCustomers.map((customer) => {
                       const stats = customerStats.transactionSummary.find(s => s.id === customer.id)
+                      const isDeletingThis = isDeleting === customer.id
                       return (
                         <TableRow key={customer.id}>
                           <TableCell>
@@ -638,6 +660,7 @@ export default function CustomersPage() {
                                   setSelectedCustomer(customer)
                                   setViewDialogOpen(true)
                                 }}
+                                disabled={isDeletingThis}
                               >
                                 <Eye className="size-4" />
                               </Button>
@@ -648,6 +671,7 @@ export default function CustomersPage() {
                                   setSelectedCustomer(customer)
                                   setEditDialogOpen(true)
                                 }}
+                                disabled={isDeletingThis}
                               >
                                 <Edit2 className="size-4" />
                               </Button>
@@ -656,9 +680,13 @@ export default function CustomersPage() {
                                 size="sm"
                                 className="text-red-600 hover:text-red-700 hover:bg-red-100 dark:hover:bg-red-900/20"
                                 onClick={() => handleDeleteCustomer(customer.id)}
-                                disabled={isLoading}
+                                disabled={isDeletingThis || !!isDeleting}
                               >
-                                <Trash2 className="size-4" />
+                                {isDeletingThis ? (
+                                  <Loader2 className="size-4 animate-spin" />
+                                ) : (
+                                  <Trash2 className="size-4" />
+                                )}
                               </Button>
                             </div>
                           </TableCell>
@@ -691,7 +719,7 @@ export default function CustomersPage() {
           {/* Analytics Tab */}
           <TabsContent value="analytics" className="space-y-4">
             <div className="grid gap-4 md:grid-cols-2">
-              {/* Customer Type Distribution - Remove corporate */}
+              {/* Customer Type Distribution */}
               <Card className="p-6">
                 <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
                   <PieChart className="size-5" />
@@ -1049,6 +1077,7 @@ export default function CustomersPage() {
             <CustomerForm 
               customer={selectedCustomer}
               isEditing={true}
+              isLoading={isSubmitting}
               onSubmit={async (data) => {
                 try {
                   await handleUpdateCustomer(selectedCustomer.id, data)

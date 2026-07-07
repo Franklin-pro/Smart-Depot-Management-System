@@ -21,6 +21,7 @@ export type Product = {
   emptyCases: number
   purchasePrice: number
   sellingPrice: number
+  sellingPricePerContainer:number
   supplier: string
   batchNumber: string
   manufactureDate: string
@@ -98,6 +99,11 @@ export type Sale = {
   items: SaleItem[]
   subtotal: number
   discount: number
+  isPartialPayment: boolean
+  remainingBalance: number
+  tax: number
+  remainingEmptyCasesTotal: number
+  totalDepositValue: number
   total: number
   payment: PaymentMethod
   amountPaid: number

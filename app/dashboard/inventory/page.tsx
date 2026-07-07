@@ -66,7 +66,44 @@ import { Progress } from "@/components/ui/progress"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { productsService } from "@/services"
 
-const BOTTLES_PER_CASE = 24
+// Helper function to safely format dates
+function safeFormatDate(date: any): string {
+  if (!date) return "Never"
+  try {
+    if (date instanceof Date) {
+      return formatDate(date.toISOString())
+    }
+    if (typeof date === 'string') {
+      return formatDate(date)
+    }
+    if (typeof date === 'object' && date !== null && 'toISOString' in date) {
+      return formatDate(date.toISOString())
+    }
+    return "Invalid date"
+  } catch (e) {
+    return "Invalid date"
+  }
+}
+
+// Helper function to get date object safely
+function safeParseDate(date: any): Date | null {
+  if (!date) return null
+  try {
+    if (date instanceof Date) return date
+    if (typeof date === 'string') return new Date(date)
+    if (typeof date === 'object' && date !== null && 'toISOString' in date) {
+      return date
+    }
+    return null
+  } catch (e) {
+    return null
+  }
+}
+
+// Get bottles per container from product data
+function getBottlesPerContainer(product: ExtendedProduct): number {
+  return product.bottlesPerContainer || 24
+}
 
 interface BottleInfo {
   damaged: number
@@ -79,15 +116,21 @@ interface PartialCase {
   id: string
   productId: string
   bottleCount: number
-  openedDate: Date
+  openedDate: Date | string
   reason: "sold_individual" | "broken_case" | "sample" | "other"
   notes?: string
 }
 
 interface ExtendedProduct extends Product {
   bottleInfo?: BottleInfo
-  lastStockCheck?: Date
+  lastStockCheck?: Date | string | null
   partialCases?: PartialCase[]
+  bottlesPerContainer?: number
+  containerType?: "case" | "box"
+  containerSizeLabel?: string
+  bottleType?: "small" | "grand"
+  purchasePricePerContainer?: number
+  sellingPricePerContainer?: number
 }
 
 export default function InventoryPage() {
@@ -141,13 +184,13 @@ export default function InventoryPage() {
     try {
       const extendedProduct: any = {
         ...values,
-        bottleInfo: {
+        bottleInfo: values.bottleInfo || {
           damaged: 0,
           missing: 0,
           returned: 0,
         },
-        partialCases: [],
-        lastStockCheck: new Date(),
+        partialCases: values.partialCases || [],
+        lastStockCheck: new Date().toISOString(),
       }
       await addProduct(extendedProduct)
       setAddOpen(false)
@@ -185,16 +228,18 @@ export default function InventoryPage() {
   }
 
   function calculateTotalBottles(product: ExtendedProduct): number {
-    const totalFromFullCases = product.fullCases * BOTTLES_PER_CASE
-    const totalFromPartialCases = (product.partialCases || []).reduce((sum, pc) => sum + pc.bottleCount, 0)
+    const bottlesPerContainer = getBottlesPerContainer(product)
+    const totalFromFullContainers = product.fullCases * bottlesPerContainer
+    const totalFromPartialContainers = (product.partialCases || []).reduce((sum, pc) => sum + pc.bottleCount, 0)
     const missing = product.bottleInfo?.missing || 0
     const damaged = product.bottleInfo?.damaged || 0
     const returned = product.bottleInfo?.returned || 0
-    return totalFromFullCases + totalFromPartialCases - missing - damaged + returned
+    return totalFromFullContainers + totalFromPartialContainers - missing - damaged + returned
   }
 
   function calculateFullCaseBottles(product: ExtendedProduct): number {
-    return product.fullCases * BOTTLES_PER_CASE
+    const bottlesPerContainer = getBottlesPerContainer(product)
+    return product.fullCases * bottlesPerContainer
   }
 
   function calculatePartialCaseBottles(product: ExtendedProduct): number {
@@ -214,9 +259,10 @@ export default function InventoryPage() {
   }
 
   function getStockIntegrity(product: ExtendedProduct): number {
-    const totalFromFullCases = product.fullCases * BOTTLES_PER_CASE
-    const totalFromPartialCases = (product.partialCases || []).reduce((sum, pc) => sum + pc.bottleCount, 0)
-    const totalPossible = totalFromFullCases + totalFromPartialCases
+    const bottlesPerContainer = getBottlesPerContainer(product)
+    const totalFromFullContainers = product.fullCases * bottlesPerContainer
+    const totalFromPartialContainers = (product.partialCases || []).reduce((sum, pc) => sum + pc.bottleCount, 0)
+    const totalPossible = totalFromFullContainers + totalFromPartialContainers
     const totalAvailable = calculateTotalBottles(product)
     if (totalPossible === 0) return 100
     return (totalAvailable / totalPossible) * 100
@@ -232,9 +278,13 @@ export default function InventoryPage() {
       ...product,
       bottleInfo: {
         ...product.bottleInfo,
+        damaged: product.bottleInfo?.damaged || 0,
+        missing: product.bottleInfo?.missing || 0,
+        returned: product.bottleInfo?.returned || 0,
+        notes: product.bottleInfo?.notes || "",
         ...adjustments,
       },
-      lastStockCheck: new Date(),
+      lastStockCheck: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     }
     
@@ -248,17 +298,20 @@ export default function InventoryPage() {
     }
   }
 
-  // ✅ Updated to use API
   const handleAddPartialCase = async (product: ExtendedProduct) => {
-    if (newPartialCase.bottleCount <= 0 || newPartialCase.bottleCount >= BOTTLES_PER_CASE) {
-      toast.error(`Bottle count must be between 1 and ${BOTTLES_PER_CASE - 1}`)
+    const bottlesPerContainer = getBottlesPerContainer(product)
+    
+    if (newPartialCase.bottleCount <= 0 || newPartialCase.bottleCount >= bottlesPerContainer) {
+      toast.error(`Bottle count must be between 1 and ${bottlesPerContainer - 1}`)
       return
     }
 
     if (product.fullCases === 0 && (product.partialCases || []).length === 0) {
-      toast.error("No full cases available to open. Please add stock first.")
+      toast.error("No full containers available to open. Please add stock first.")
       return
     }
+
+    const containerLabel = product.containerType === "box" ? "box" : "case"
 
     const updatedProduct = {
       ...product,
@@ -268,7 +321,7 @@ export default function InventoryPage() {
           id: Date.now().toString(),
           productId: product.id,
           bottleCount: newPartialCase.bottleCount,
-          openedDate: new Date(),
+          openedDate: new Date().toISOString(),
           reason: newPartialCase.reason,
           notes: newPartialCase.notes || undefined,
         }
@@ -280,15 +333,14 @@ export default function InventoryPage() {
     try {
       await updateProduct(product.id, updatedProduct)
       setPartialCaseOpen(null)
-      setNewPartialCase({ bottleCount: 12, reason: "sold_individual", notes: "" })
-      toast.success(`Opened partial case with ${newPartialCase.bottleCount} bottles`)
+      setNewPartialCase({ bottleCount: Math.floor(bottlesPerContainer / 2), reason: "sold_individual", notes: "" })
+      toast.success(`Opened partial ${containerLabel} with ${newPartialCase.bottleCount} bottles`)
     } catch (error) {
       console.error('Failed to open partial case:', error)
       toast.error('Failed to open partial case')
     }
   }
 
-  // ✅ Updated to use API
   const handleClosePartialCase = async (product: ExtendedProduct, partialCaseId: string) => {
     const partialCase = (product.partialCases || []).find(pc => pc.id === partialCaseId)
     if (!partialCase) return
@@ -311,7 +363,7 @@ export default function InventoryPage() {
   const getReasonLabel = (reason: string) => {
     switch (reason) {
       case "sold_individual": return "Individual Sales"
-      case "broken_case": return "Broken Case"
+      case "broken_case": return "Broken Container"
       case "sample": return "Sampling"
       default: return "Other"
     }
@@ -328,6 +380,7 @@ export default function InventoryPage() {
 
   // Product Details Dialog Component
   function ProductDetailsDialog({ product, onClose }: { product: ExtendedProduct; onClose: () => void }) {
+    const bottlesPerContainer = getBottlesPerContainer(product)
     const totalBottles = calculateTotalBottles(product)
     const fullCaseBottles = calculateFullCaseBottles(product)
     const partialCaseBottles = calculatePartialCaseBottles(product)
@@ -341,392 +394,401 @@ export default function InventoryPage() {
       ? ((product.sellingPrice - product.purchasePrice) / product.purchasePrice) * 100
       : 0
 
+    const containerLabel = product.containerType === "box" ? "Box" : "Case"
+
     return (
-      <Dialog open={true} onOpenChange={(o) => !o && onClose()}>
-        <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center justify-between">
-              <span>{product.name}</span>
-              <Badge variant="outline" className="ml-2">
-                {product.batchNumber}
-              </Badge>
-            </DialogTitle>
-            <DialogDescription>
-              {product.brand} · {product.category}
-            </DialogDescription>
-          </DialogHeader>
+    <Dialog open={true} onOpenChange={(o) => !o && onClose()}>
+  <DialogContent className="max-h-[90vh] w-[95vw] max-w-[95vw] overflow-y-auto sm:max-w-6xl xl:max-w-7xl">
+    <DialogHeader>
+      <DialogTitle className="flex items-center justify-between">
+        <span>{product.name}</span>
+        <Badge variant="outline" className="ml-2">
+          {product.batchNumber}
+        </Badge>
+      </DialogTitle>
+      <DialogDescription>
+        {product.brand} · {product.category} · {product.bottleType || "Grand"} · {bottlesPerContainer} bottles/{containerLabel.toLowerCase()}
+      </DialogDescription>
+    </DialogHeader>
 
-          <Tabs defaultValue="overview" className="mt-4">
-            <TabsList className="grid w-full grid-cols-4">
-              <TabsTrigger value="overview">Overview</TabsTrigger>
-              <TabsTrigger value="partial-cases">Partial Cases</TabsTrigger>
-              <TabsTrigger value="bottles">Bottle Tracking</TabsTrigger>
-              <TabsTrigger value="financial">Financial</TabsTrigger>
-            </TabsList>
+    <Tabs defaultValue="overview" className="mt-4">
+      <TabsList className="grid w-full grid-cols-4">
+        <TabsTrigger value="overview">Overview</TabsTrigger>
+        <TabsTrigger value="partial-cases">Partial {containerLabel}s</TabsTrigger>
+        <TabsTrigger value="bottles">Bottle Tracking</TabsTrigger>
+        <TabsTrigger value="financial">Financial</TabsTrigger>
+      </TabsList>
 
-            {/* Overview Tab */}
-            <TabsContent value="overview" className="space-y-4">
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                <Card className="p-3">
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Box className="size-4" />
-                    Full Cases
-                  </div>
-                  <div className="text-2xl font-bold">{product.fullCases}</div>
-                  <div className="text-xs text-muted-foreground">{fullCaseBottles} bottles</div>
-                </Card>
-                
-                <Card className="p-3">
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Layers className="size-4" />
-                    Partial Cases
-                  </div>
-                  <div className="text-2xl font-bold text-orange-600">{product.partialCases?.length || 0}</div>
-                  <div className="text-xs text-muted-foreground">{partialCaseBottles} bottles</div>
-                </Card>
-                
-                <Card className="p-3">
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <BottleWine className="size-4" />
-                    Total Bottles
-                  </div>
-                  <div className="text-2xl font-bold text-green-600">{totalBottles}</div>
-                  <div className="text-xs text-muted-foreground">sellable</div>
-                </Card>
-                
-                <Card className="p-3">
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Archive className="size-4" />
-                    Empty Cases
-                  </div>
-                  <div className="text-2xl font-bold">{product.emptyCases || 0}</div>
-                  <div className="text-xs text-muted-foreground">{formatCurrency(emptyCasesValue)} deposit</div>
-                </Card>
+      {/* Overview Tab */}
+      <TabsContent value="overview" className="space-y-4">
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <Card className="p-3">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Box className="size-4" />
+              Full {containerLabel}s
+            </div>
+            <div className="text-2xl font-bold">{product.fullCases}</div>
+            <div className="text-xs text-muted-foreground">{fullCaseBottles} bottles</div>
+          </Card>
+          
+          <Card className="p-3">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Layers className="size-4" />
+              Partial {containerLabel}s
+            </div>
+            <div className="text-2xl font-bold text-orange-600">{product.partialCases?.length || 0}</div>
+            <div className="text-xs text-muted-foreground">{partialCaseBottles} bottles</div>
+          </Card>
+          
+          <Card className="p-3">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <BottleWine className="size-4" />
+              Total Bottles
+            </div>
+            <div className="text-2xl font-bold text-green-600">{totalBottles}</div>
+            <div className="text-xs text-muted-foreground">sellable</div>
+          </Card>
+          
+          <Card className="p-3">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Archive className="size-4" />
+              Empty {containerLabel}s
+            </div>
+            <div className="text-2xl font-bold">{product.emptyCases || 0}</div>
+            <div className="text-xs text-muted-foreground">{formatCurrency(emptyCasesValue)} deposit</div>
+          </Card>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2">
+          <Card className="p-4">
+            <h4 className="font-semibold mb-3 flex items-center gap-2">
+              <Calendar className="size-4" />
+              Expiry Information
+            </h4>
+            <div className="space-y-2">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Manufacture Date:</span>
+                <span>{formatDate(product.manufactureDate)}</span>
               </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Expiry Date:</span>
+                <span className={daysToExpiry < 0 ? "text-destructive" : daysToExpiry < 30 ? "text-orange-500" : ""}>
+                  {formatDate(product.expiryDate)}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Days Until Expiry:</span>
+                <Badge variant={daysToExpiry < 0 ? "destructive" : daysToExpiry < 30 ? "outline" : "default"}>
+                  {daysToExpiry < 0 ? "Expired" : `${daysToExpiry} days`}
+                </Badge>
+              </div>
+            </div>
+          </Card>
 
-              <div className="grid gap-4 md:grid-cols-2">
-                <Card className="p-4">
-                  <h4 className="font-semibold mb-3 flex items-center gap-2">
-                    <Calendar className="size-4" />
-                    Expiry Information
-                  </h4>
-                  <div className="space-y-2">
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Manufacture Date:</span>
-                      <span>{formatDate(product.manufactureDate)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Expiry Date:</span>
-                      <span className={daysToExpiry < 0 ? "text-destructive" : daysToExpiry < 30 ? "text-orange-500" : ""}>
-                        {formatDate(product.expiryDate)}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Days Until Expiry:</span>
-                      <Badge variant={daysToExpiry < 0 ? "destructive" : daysToExpiry < 30 ? "outline" : "default"}>
-                        {daysToExpiry < 0 ? "Expired" : `${daysToExpiry} days`}
+          <Card className="p-4">
+            <h4 className="font-semibold mb-3 flex items-center gap-2">
+              <Building className="size-4" />
+              Supplier Information
+            </h4>
+            <div className="space-y-2">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Supplier:</span>
+                <span>{product.supplier}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Batch Number:</span>
+                <span className="font-mono">{product.batchNumber}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Last Stock Check:</span>
+                <span>{safeFormatDate(product.lastStockCheck)}</span>
+              </div>
+            </div>
+          </Card>
+        </div>
+
+        <Card className="p-4">
+          <h4 className="font-semibold mb-3 flex items-center gap-2">
+            <Activity className="size-4" />
+            Stock Health
+          </h4>
+          <div className="space-y-3">
+            <div>
+              <div className="flex justify-between text-sm mb-1">
+                <span>Stock Integrity</span>
+                <span>{Math.round(integrity)}%</span>
+              </div>
+              <Progress value={integrity} className="h-2" />
+            </div>
+            <div className="grid grid-cols-3 gap-3 text-center">
+              <div>
+                <div className="text-xs text-muted-foreground">Missing</div>
+                <div className="font-semibold text-destructive">{missingBottles}</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground">Damaged</div>
+                <div className="font-semibold text-orange-500">{damagedBottles}</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground">Returned</div>
+                <div className="font-semibold text-green-600">{returnedBottles}</div>
+              </div>
+            </div>
+          </div>
+        </Card>
+      </TabsContent>
+
+      {/* Partial Cases Tab */}
+      <TabsContent value="partial-cases" className="space-y-4">
+        {(product.partialCases || []).length === 0 ? (
+          <Card className="p-8 text-center">
+            <Package className="mx-auto size-12 text-muted-foreground mb-3" />
+            <p className="text-muted-foreground">No open partial {containerLabel.toLowerCase()}s for this product</p>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="mt-3"
+              onClick={() => {
+                onClose()
+                setPartialCaseOpen(product)
+              }}
+            >
+              <Split className="size-4 mr-2" />
+              Open a {containerLabel}
+            </Button>
+          </Card>
+        ) : (
+          <div className="space-y-3">
+            {(product.partialCases || []).map((pc, index) => (
+              <Card key={pc.id} className="p-4">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Badge className="bg-orange-100 text-orange-800">
+                        {containerLabel} #{index + 1}
+                      </Badge>
+                      <Badge variant="outline" className="flex items-center gap-1">
+                        {getReasonIcon(pc.reason)}
+                        {getReasonLabel(pc.reason)}
                       </Badge>
                     </div>
-                  </div>
-                </Card>
-
-                <Card className="p-4">
-                  <h4 className="font-semibold mb-3 flex items-center gap-2">
-                    <Building className="size-4" />
-                    Supplier Information
-                  </h4>
-                  <div className="space-y-2">
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Supplier:</span>
-                      <span>{product.supplier}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Batch Number:</span>
-                      <span className="font-mono">{product.batchNumber}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Last Stock Check:</span>
-                      <span>{product.lastStockCheck ? formatDate(product.lastStockCheck.toISOString()) : "Never"}</span>
-                    </div>
-                  </div>
-                </Card>
-              </div>
-
-              <Card className="p-4">
-                <h4 className="font-semibold mb-3 flex items-center gap-2">
-                  <Activity className="size-4" />
-                  Stock Health
-                </h4>
-                <div className="space-y-3">
-                  <div>
-                    <div className="flex justify-between text-sm mb-1">
-                      <span>Stock Integrity</span>
-                      <span>{Math.round(integrity)}%</span>
-                    </div>
-                    <Progress value={integrity} className="h-2" />
-                  </div>
-                  <div className="grid grid-cols-3 gap-3 text-center">
-                    <div>
-                      <div className="text-xs text-muted-foreground">Missing</div>
-                      <div className="font-semibold text-destructive">{missingBottles}</div>
-                    </div>
-                    <div>
-                      <div className="text-xs text-muted-foreground">Damaged</div>
-                      <div className="font-semibold text-orange-500">{damagedBottles}</div>
-                    </div>
-                    <div>
-                      <div className="text-xs text-muted-foreground">Returned</div>
-                      <div className="font-semibold text-green-600">{returnedBottles}</div>
+                    
+                    <div className="grid gap-2 mt-3 sm:grid-cols-2">
+                      <div>
+                        <div className="text-xs text-muted-foreground">Bottles in {containerLabel}</div>
+                        <div className="text-xl font-semibold">{pc.bottleCount} / {bottlesPerContainer}</div>
+                        <Progress 
+                          value={(pc.bottleCount / bottlesPerContainer) * 100} 
+                          className="h-1 mt-1" 
+                        />
+                      </div>
+                      <div>
+                        <div className="text-xs text-muted-foreground">Opened Date</div>
+                        <div className="font-medium">{safeFormatDate(pc.openedDate)}</div>
+                      </div>
+                      {pc.notes && (
+                        <div className="sm:col-span-2">
+                          <div className="text-xs text-muted-foreground">Notes</div>
+                          <div className="text-sm bg-muted p-2 rounded-md mt-1">{pc.notes}</div>
+                        </div>
+                      )}
                     </div>
                   </div>
-                </div>
-              </Card>
-            </TabsContent>
-
-            {/* Partial Cases Tab */}
-            <TabsContent value="partial-cases" className="space-y-4">
-              {(product.partialCases || []).length === 0 ? (
-                <Card className="p-8 text-center">
-                  <Package className="mx-auto size-12 text-muted-foreground mb-3" />
-                  <p className="text-muted-foreground">No open partial cases for this product</p>
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    className="mt-3"
-                    onClick={() => {
-                      onClose()
-                      setPartialCaseOpen(product)
-                    }}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="size-8 text-destructive"
+                    onClick={() => handleClosePartialCase(product, pc.id)}
                   >
-                    <Split className="size-4 mr-2" />
-                    Open a Case
+                    <X className="size-4" />
                   </Button>
-                </Card>
-              ) : (
-                <div className="space-y-3">
-                  {(product.partialCases || []).map((pc, index) => (
-                    <Card key={pc.id} className="p-4">
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-2">
-                            <Badge className="bg-orange-100 text-orange-800">
-                              Case #{index + 1}
-                            </Badge>
-                            <Badge variant="outline" className="flex items-center gap-1">
-                              {getReasonIcon(pc.reason)}
-                              {getReasonLabel(pc.reason)}
-                            </Badge>
-                          </div>
-                          
-                          <div className="grid gap-2 mt-3 sm:grid-cols-2">
-                            <div>
-                              <div className="text-xs text-muted-foreground">Bottles in Case</div>
-                              <div className="text-xl font-semibold">{pc.bottleCount} / {BOTTLES_PER_CASE}</div>
-                              <Progress 
-                                value={(pc.bottleCount / BOTTLES_PER_CASE) * 100} 
-                                className="h-1 mt-1" 
-                              />
-                            </div>
-                            <div>
-                              <div className="text-xs text-muted-foreground">Opened Date</div>
-                              <div className="font-medium">{formatDate(pc.openedDate.toISOString())}</div>
-                            </div>
-                            {pc.notes && (
-                              <div className="sm:col-span-2">
-                                <div className="text-xs text-muted-foreground">Notes</div>
-                                <div className="text-sm bg-muted p-2 rounded-md mt-1">{pc.notes}</div>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="size-8 text-destructive"
-                          onClick={() => handleClosePartialCase(product, pc.id)}
-                        >
-                          <X className="size-4" />
-                        </Button>
-                      </div>
-                    </Card>
-                  ))}
-
-                  {/* Summary of all partial cases */}
-                  <Card className="p-4 bg-muted/30">
-                    <h4 className="font-semibold mb-2">Summary</h4>
-                    <div className="grid grid-cols-2 gap-3 text-sm">
-                      <div>
-                        <span className="text-muted-foreground">Total Partial Cases:</span>
-                        <div className="font-bold">{(product.partialCases || []).length}</div>
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground">Total Bottles in Partial Cases:</span>
-                        <div className="font-bold text-orange-600">{partialCaseBottles}</div>
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground">Average Bottles per Case:</span>
-                        <div className="font-bold">
-                          {Math.round(partialCaseBottles / (product.partialCases?.length || 1))}
-                        </div>
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground">Missing from Full Cases:</span>
-                        <div className="font-bold text-destructive">
-                          {BOTTLES_PER_CASE * product.fullCases - fullCaseBottles}
-                        </div>
-                      </div>
-                    </div>
-                  </Card>
-                </div>
-              )}
-            </TabsContent>
-
-            {/* Bottle Tracking Tab */}
-            <TabsContent value="bottles" className="space-y-4">
-              <div className="grid gap-4 md:grid-cols-2">
-                <Card className="p-4">
-                  <h4 className="font-semibold mb-3 flex items-center gap-2">
-                    <AlertCircleIcon className="size-4 text-destructive" />
-                    Issues
-                  </h4>
-                  <div className="space-y-3">
-                    <div className="flex justify-between items-center p-2 bg-destructive/10 rounded-lg">
-                      <span>Missing Bottles</span>
-                      <span className="font-bold text-destructive">{missingBottles}</span>
-                    </div>
-                    <div className="flex justify-between items-center p-2 bg-orange-500/10 rounded-lg">
-                      <span>Damaged Bottles</span>
-                      <span className="font-bold text-orange-500">{damagedBottles}</span>
-                    </div>
-                    <div className="flex justify-between items-center p-2 bg-green-500/10 rounded-lg">
-                      <span>Returned Bottles</span>
-                      <span className="font-bold text-green-600">{returnedBottles}</span>
-                    </div>
-                  </div>
-                </Card>
-
-                <Card className="p-4">
-                  <h4 className="font-semibold mb-3 flex items-center gap-2">
-                    <CheckCircle className="size-4 text-green-600" />
-                    Good Stock
-                  </h4>
-                  <div className="space-y-3">
-                    <div className="flex justify-between items-center p-2 bg-green-500/10 rounded-lg">
-                      <span>Full Case Bottles</span>
-                      <span className="font-bold text-green-600">{fullCaseBottles}</span>
-                    </div>
-                    <div className="flex justify-between items-center p-2 bg-blue-500/10 rounded-lg">
-                      <span>Partial Case Bottles</span>
-                      <span className="font-bold text-blue-600">{partialCaseBottles}</span>
-                    </div>
-                    <div className="flex justify-between items-center p-2 bg-purple-500/10 rounded-lg">
-                      <span>Total Sellable</span>
-                      <span className="font-bold text-purple-600">{totalBottles}</span>
-                    </div>
-                  </div>
-                </Card>
-              </div>
-
-              {(product.bottleInfo?.notes) && (
-                <Card className="p-4">
-                  <h4 className="font-semibold mb-2">Stock Notes</h4>
-                  <p className="text-sm bg-muted p-3 rounded-md">{product.bottleInfo.notes}</p>
-                </Card>
-              )}
-
-              <Card className="p-4">
-                <h4 className="font-semibold mb-2">Stock History</h4>
-                <div className="text-sm text-muted-foreground">
-                  Last checked: {product.lastStockCheck ? formatDate(product.lastStockCheck.toISOString()) : "Never"}
                 </div>
               </Card>
-            </TabsContent>
+            ))}
 
-            {/* Financial Tab */}
-            <TabsContent value="financial" className="space-y-4">
-              <div className="grid gap-4 md:grid-cols-2">
-                <Card className="p-4">
-                  <h4 className="font-semibold mb-3">Pricing</h4>
-                  <div className="space-y-2">
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Purchase Price:</span>
-                      <span>{formatCurrency(product.purchasePrice)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Selling Price:</span>
-                      <span className="font-semibold">{formatCurrency(product.sellingPrice)}</span>
-                    </div>
-                    <Separator />
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Profit per Bottle:</span>
-                      <span className="text-green-600">{formatCurrency(product.sellingPrice - product.purchasePrice)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Profit Margin:</span>
-                      <span className="text-blue-600">{profitMargin.toFixed(1)}%</span>
-                    </div>
-                  </div>
-                </Card>
-
-                <Card className="p-4">
-                  <h4 className="font-semibold mb-3">Deposit Information</h4>
-                  <div className="space-y-2">
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Deposit per Case:</span>
-                      <span>{formatCurrency(product.depositAmount || 0)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Empty Cases:</span>
-                      <span>{product.emptyCases || 0}</span>
-                    </div>
-                    <Separator />
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Total Deposit Value:</span>
-                      <span className="font-semibold">{formatCurrency(emptyCasesValue)}</span>
-                    </div>
-                  </div>
-                </Card>
-              </div>
-
-              <Card className="p-4">
-                <h4 className="font-semibold mb-3">Inventory Value</h4>
-                <div className="space-y-2">
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Total Bottles:</span>
-                    <span>{totalBottles}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Total Stock Value (Cost):</span>
-                    <span>{formatCurrency(totalBottles * product.purchasePrice)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Potential Revenue:</span>
-                    <span className="text-green-600">{formatCurrency(totalBottles * product.sellingPrice)}</span>
-                  </div>
-                  <Separator />
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Potential Profit:</span>
-                    <span className="text-blue-600">{formatCurrency(totalBottles * (product.sellingPrice - product.purchasePrice))}</span>
+            <Card className="p-4 bg-muted/30">
+              <h4 className="font-semibold mb-2">Summary</h4>
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div>
+                  <span className="text-muted-foreground">Total Partial {containerLabel}s:</span>
+                  <div className="font-bold">{(product.partialCases || []).length}</div>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Total Bottles in Partial {containerLabel}s:</span>
+                  <div className="font-bold text-orange-600">{partialCaseBottles}</div>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Average Bottles per {containerLabel}:</span>
+                  <div className="font-bold">
+                    {Math.round(partialCaseBottles / (product.partialCases?.length || 1))}
                   </div>
                 </div>
-              </Card>
-            </TabsContent>
-          </Tabs>
-
-          <div className="flex justify-end gap-2 mt-4">
-            <Button variant="outline" onClick={onClose}>
-              Close
-            </Button>
-            <Button onClick={() => {
-              onClose()
-              setEditing(product)
-            }}>
-              <Pencil className="size-4 mr-2" />
-              Edit Product
-            </Button>
+                <div>
+                  <span className="text-muted-foreground">Missing from Full {containerLabel}s:</span>
+                  <div className="font-bold text-destructive">
+                    {bottlesPerContainer * product.fullCases - fullCaseBottles}
+                  </div>
+                </div>
+              </div>
+            </Card>
           </div>
-        </DialogContent>
-      </Dialog>
+        )}
+      </TabsContent>
+
+      {/* Bottle Tracking Tab */}
+      <TabsContent value="bottles" className="space-y-4">
+        <div className="grid gap-4 md:grid-cols-2">
+          <Card className="p-4">
+            <h4 className="font-semibold mb-3 flex items-center gap-2">
+              <AlertCircleIcon className="size-4 text-destructive" />
+              Issues
+            </h4>
+            <div className="space-y-3">
+              <div className="flex justify-between items-center p-2 bg-destructive/10 rounded-lg">
+                <span>Missing Bottles</span>
+                <span className="font-bold text-destructive">{missingBottles}</span>
+              </div>
+              <div className="flex justify-between items-center p-2 bg-orange-500/10 rounded-lg">
+                <span>Damaged Bottles</span>
+                <span className="font-bold text-orange-500">{damagedBottles}</span>
+              </div>
+              <div className="flex justify-between items-center p-2 bg-green-500/10 rounded-lg">
+                <span>Returned Bottles</span>
+                <span className="font-bold text-green-600">{returnedBottles}</span>
+              </div>
+            </div>
+          </Card>
+
+          <Card className="p-4">
+            <h4 className="font-semibold mb-3 flex items-center gap-2">
+              <CheckCircle className="size-4 text-green-600" />
+              Good Stock
+            </h4>
+            <div className="space-y-3">
+              <div className="flex justify-between items-center p-2 bg-green-500/10 rounded-lg">
+                <span>Full {containerLabel} Bottles</span>
+                <span className="font-bold text-green-600">{fullCaseBottles}</span>
+              </div>
+              <div className="flex justify-between items-center p-2 bg-blue-500/10 rounded-lg">
+                <span>Partial {containerLabel} Bottles</span>
+                <span className="font-bold text-blue-600">{partialCaseBottles}</span>
+              </div>
+              <div className="flex justify-between items-center p-2 bg-purple-500/10 rounded-lg">
+                <span>Total Sellable</span>
+                <span className="font-bold text-purple-600">{totalBottles}</span>
+              </div>
+            </div>
+          </Card>
+        </div>
+
+        {(product.bottleInfo?.notes) && (
+          <Card className="p-4">
+            <h4 className="font-semibold mb-2">Stock Notes</h4>
+            <p className="text-sm bg-muted p-3 rounded-md">{product.bottleInfo.notes}</p>
+          </Card>
+        )}
+
+        <Card className="p-4">
+          <h4 className="font-semibold mb-2">Stock History</h4>
+          <div className="text-sm text-muted-foreground">
+            Last checked: {safeFormatDate(product.lastStockCheck)}
+          </div>
+        </Card>
+      </TabsContent>
+
+      {/* Financial Tab */}
+      <TabsContent value="financial" className="space-y-4">
+        <div className="grid gap-4 md:grid-cols-2">
+          <Card className="p-4">
+            <h4 className="font-semibold mb-3">Pricing</h4>
+            <div className="space-y-2">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Purchase Price per {containerLabel}:</span>
+                <span>{formatCurrency(product.purchasePricePerContainer || 0)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Selling Price per {containerLabel}:</span>
+                <span className="font-semibold">{formatCurrency(product.sellingPricePerContainer || 0)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Purchase Price per Bottle:</span>
+                <span>{formatCurrency(product.purchasePrice)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Selling Price per Bottle:</span>
+                <span className="font-semibold">{formatCurrency(product.sellingPrice)}</span>
+              </div>
+              <Separator />
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Profit per Bottle:</span>
+                <span className="text-green-600">{formatCurrency(product.sellingPrice - product.purchasePrice)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Profit Margin:</span>
+                <span className="text-blue-600">{profitMargin.toFixed(1)}%</span>
+              </div>
+            </div>
+          </Card>
+
+          <Card className="p-4">
+            <h4 className="font-semibold mb-3">Deposit Information</h4>
+            <div className="space-y-2">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Deposit per {containerLabel}:</span>
+                <span>{formatCurrency(product.depositAmount || 0)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Empty {containerLabel}s:</span>
+                <span>{product.emptyCases || 0}</span>
+              </div>
+              <Separator />
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Total Deposit Value:</span>
+                <span className="font-semibold">{formatCurrency(emptyCasesValue)}</span>
+              </div>
+            </div>
+          </Card>
+        </div>
+
+        <Card className="p-4">
+          <h4 className="font-semibold mb-3">Inventory Value</h4>
+          <div className="space-y-2">
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Total Bottles:</span>
+              <span>{totalBottles}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Total Stock Value (Cost):</span>
+              <span>{formatCurrency(totalBottles * product.purchasePrice)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Potential Revenue:</span>
+              <span className="text-green-600">{formatCurrency(totalBottles * product.sellingPrice)}</span>
+            </div>
+            <Separator />
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Potential Profit:</span>
+              <span className="text-blue-600">{formatCurrency(totalBottles * (product.sellingPrice - product.purchasePrice))}</span>
+            </div>
+          </div>
+        </Card>
+      </TabsContent>
+    </Tabs>
+
+    <div className="flex justify-end gap-2 mt-4">
+      <Button variant="outline" onClick={onClose}>
+        Close
+      </Button>
+      <Button onClick={() => {
+        onClose()
+        setEditing(product)
+      }}>
+        <Pencil className="size-4 mr-2" />
+        Edit Product
+      </Button>
+    </div>
+  </DialogContent>
+</Dialog>
     )
   }
 
@@ -745,7 +807,7 @@ export default function InventoryPage() {
   return (
     <TooltipProvider>
       <>
-        <DashboardHeader title="Inventory" description="Manage your beer stock with bottle-level tracking" />
+        <DashboardHeader title="Inventory" description="Manage your stock with bottle-level tracking" />
         <div className="flex flex-col gap-6 p-4 md:p-6">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex flex-1 flex-col gap-3 sm:flex-row">
@@ -780,7 +842,7 @@ export default function InventoryPage() {
               </DialogTrigger>
               <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
                 <DialogHeader>
-                  <DialogTitle>Add new beer stock</DialogTitle>
+                  <DialogTitle>Add new stock</DialogTitle>
                   <DialogDescription>Enter product details to add to inventory.</DialogDescription>
                 </DialogHeader>
                 <ProductForm onSubmit={handleAdd} submitLabel="Add to inventory" />
@@ -795,9 +857,9 @@ export default function InventoryPage() {
                   <TableRow>
                     <TableHead>Product</TableHead>
                     <TableHead>Category</TableHead>
-                    <TableHead className="text-right">Full Cases</TableHead>
-                    <TableHead className="text-right">Partial Cases</TableHead>
-                    <TableHead className="text-right">Empty Cases</TableHead>
+                    <TableHead className="text-right">Full Containers</TableHead>
+                    <TableHead className="text-right">Partial Containers</TableHead>
+                    <TableHead className="text-right">Empty Containers</TableHead>
                     <TableHead className="text-right">Bottle Details</TableHead>
                     <TableHead className="text-right">Total Bottles</TableHead>
                     <TableHead className="text-right">Selling Price</TableHead>
@@ -810,6 +872,7 @@ export default function InventoryPage() {
                 <TableBody>
                   {filtered.map((p) => {
                     const extendedP = p as ExtendedProduct
+                    const bottlesPerContainer = getBottlesPerContainer(extendedP)
                     const d = daysUntil(p.expiryDate)
                     const totalBottles = calculateTotalBottles(extendedP)
                     const fullCaseBottles = calculateFullCaseBottles(extendedP)
@@ -821,6 +884,7 @@ export default function InventoryPage() {
                     const hasIssues = missingBottles > 0 || damagedBottles > 0
                     const emptyCasesValue = getEmptyCasesValue(extendedP)
                     const partialCasesCount = (extendedP.partialCases || []).length
+                    const containerLabel = extendedP.containerType === "box" ? "Box" : "Case"
                     
                     return (
                       <TableRow key={p.id} className={hasIssues ? "bg-destructive/5" : ""}>
@@ -830,6 +894,11 @@ export default function InventoryPage() {
                             <span className="text-xs text-muted-foreground">
                               {p.brand} · {p.batchNumber}
                             </span>
+                            {extendedP.bottleType && (
+                              <Badge variant="outline" className="mt-1 text-xs w-fit">
+                                {extendedP.bottleType} · {bottlesPerContainer}/{containerLabel.toLowerCase()}
+                              </Badge>
+                            )}
                           </div>
                         </TableCell>
                         <TableCell className="text-muted-foreground">{p.category}</TableCell>
@@ -843,7 +912,7 @@ export default function InventoryPage() {
                           {partialCasesCount > 0 ? (
                             <div className="flex flex-col">
                               <span className="font-medium text-orange-600">
-                                {partialCasesCount} case{partialCasesCount !== 1 ? 's' : ''}
+                                {partialCasesCount} {containerLabel.toLowerCase()}{partialCasesCount !== 1 ? 's' : ''}
                               </span>
                               <div className="text-xs text-muted-foreground">
                                 ({partialCaseBottles} bottles)
@@ -929,7 +998,7 @@ export default function InventoryPage() {
                             <StatusBadge status={getStockStatus(p)} />
                             {partialCasesCount > 0 && (
                               <Badge variant="outline" className="text-xs bg-orange-50">
-                                {partialCasesCount} open case(s)
+                                {partialCasesCount} open {containerLabel.toLowerCase()}(s)
                               </Badge>
                             )}
                           </div>
@@ -945,10 +1014,10 @@ export default function InventoryPage() {
                                   onClick={() => setPartialCaseOpen(extendedP)}
                                 >
                                   <Split className="size-4" />
-                                  <span className="sr-only">Open Case</span>
+                                  <span className="sr-only">Open {containerLabel}</span>
                                 </Button>
                               </TooltipTrigger>
-                              <TooltipContent>Create partial case</TooltipContent>
+                              <TooltipContent>Create partial {containerLabel.toLowerCase()}</TooltipContent>
                             </Tooltip>
                             <Tooltip>
                               <TooltipTrigger asChild>
@@ -1025,7 +1094,7 @@ export default function InventoryPage() {
               </div>
             </Card>
             <Card className="p-4">
-              <div className="text-sm text-muted-foreground">Open Partial Cases</div>
+              <div className="text-sm text-muted-foreground">Open Partial Containers</div>
               <div className="text-2xl font-bold text-orange-600">
                 {products.reduce((sum, p) => {
                   const ep = p as ExtendedProduct
@@ -1076,9 +1145,9 @@ export default function InventoryPage() {
         <Dialog open={!!partialCaseOpen} onOpenChange={(o) => !o && setPartialCaseOpen(null)}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Open a Case - {partialCaseOpen?.name}</DialogTitle>
+              <DialogTitle>Open a {partialCaseOpen?.containerType === "box" ? "Box" : "Case"} - {partialCaseOpen?.name}</DialogTitle>
               <DialogDescription>
-                Split a full case for individual bottle sales. Each case has {BOTTLES_PER_CASE} bottles.
+                Split a full container for individual bottle sales.
               </DialogDescription>
             </DialogHeader>
             {partialCaseOpen && (
@@ -1086,11 +1155,11 @@ export default function InventoryPage() {
                 <div className="rounded-lg bg-muted p-4">
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     <div>
-                      <div className="text-muted-foreground">Available Full Cases</div>
+                      <div className="text-muted-foreground">Available Full Containers</div>
                       <div className="font-semibold text-lg">{partialCaseOpen.fullCases}</div>
                     </div>
                     <div>
-                      <div className="text-muted-foreground">Open Cases</div>
+                      <div className="text-muted-foreground">Open Containers</div>
                       <div className="font-semibold text-lg text-orange-600">
                         {partialCaseOpen.partialCases?.length || 0}
                       </div>
@@ -1100,16 +1169,16 @@ export default function InventoryPage() {
 
                 <div className="space-y-3">
                   <div>
-                    <Label>Number of Bottles in this Case</Label>
+                    <Label>Number of Bottles in this Container</Label>
                     <Input
                       type="number"
                       min={1}
-                      max={BOTTLES_PER_CASE - 1}
+                      max={getBottlesPerContainer(partialCaseOpen) - 1}
                       value={newPartialCase.bottleCount}
-                      onChange={(e) => setNewPartialCase({ ...newPartialCase, bottleCount: Math.min(BOTTLES_PER_CASE - 1, Math.max(1, parseInt(e.target.value) || 0)) })}
+                      onChange={(e) => setNewPartialCase({ ...newPartialCase, bottleCount: Math.min(getBottlesPerContainer(partialCaseOpen) - 1, Math.max(1, parseInt(e.target.value) || 0)) })}
                     />
                     <p className="mt-1 text-xs text-muted-foreground">
-                      How many bottles are currently in this opened case? (1-{BOTTLES_PER_CASE - 1})
+                      How many bottles are currently in this opened container? (1-{getBottlesPerContainer(partialCaseOpen) - 1})
                     </p>
                   </div>
 
@@ -1121,7 +1190,7 @@ export default function InventoryPage() {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="sold_individual">Selling individually</SelectItem>
-                        <SelectItem value="broken_case">Case was damaged/broken</SelectItem>
+                        <SelectItem value="broken_case">Container was damaged/broken</SelectItem>
                         <SelectItem value="sample">Sampling / Promotion</SelectItem>
                         <SelectItem value="other">Other reason</SelectItem>
                       </SelectContent>
@@ -1131,7 +1200,7 @@ export default function InventoryPage() {
                   <div>
                     <Label>Notes (Optional)</Label>
                     <Input
-                      placeholder="Add any notes about this partial case..."
+                      placeholder="Add any notes about this partial container..."
                       value={newPartialCase.notes}
                       onChange={(e) => setNewPartialCase({ ...newPartialCase, notes: e.target.value })}
                     />
@@ -1144,8 +1213,7 @@ export default function InventoryPage() {
                     <div>
                       <p className="font-medium">Note</p>
                       <p className="text-xs">
-                        One full case will be removed from inventory and replaced with a partial case record.
-                        Missing bottles can be tracked as individual sales or losses.
+                        One full container will be removed from inventory and replaced with a partial container record.
                       </p>
                     </div>
                   </div>
@@ -1157,7 +1225,7 @@ export default function InventoryPage() {
                   </Button>
                   <Button onClick={() => handleAddPartialCase(partialCaseOpen)}>
                     <Split className="size-4 mr-2" />
-                    Open Case
+                    Open Container
                   </Button>
                 </div>
               </div>
@@ -1171,7 +1239,7 @@ export default function InventoryPage() {
             <DialogHeader>
               <DialogTitle>Adjust Stock Levels - {stockAdjustOpen?.name}</DialogTitle>
               <DialogDescription>
-                Record missing, damaged, or returned bottles across all cases.
+                Record missing, damaged, or returned bottles across all containers.
               </DialogDescription>
             </DialogHeader>
             {stockAdjustOpen && (
@@ -1179,11 +1247,11 @@ export default function InventoryPage() {
                 <div className="rounded-lg bg-muted p-4">
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     <div>
-                      <div className="text-muted-foreground">Full Cases</div>
+                      <div className="text-muted-foreground">Full Containers</div>
                       <div className="font-semibold">{stockAdjustOpen.fullCases}</div>
                     </div>
                     <div>
-                      <div className="text-muted-foreground">Partial Cases</div>
+                      <div className="text-muted-foreground">Partial Containers</div>
                       <div className="font-semibold">{stockAdjustOpen.partialCases?.length || 0}</div>
                     </div>
                     <div>
@@ -1191,7 +1259,7 @@ export default function InventoryPage() {
                       <div className="font-semibold">{calculateTotalBottles(stockAdjustOpen)}</div>
                     </div>
                     <div>
-                      <div className="text-muted-foreground">Empty Cases</div>
+                      <div className="text-muted-foreground">Empty Containers</div>
                       <div className="font-semibold">{stockAdjustOpen.emptyCases || 0}</div>
                     </div>
                   </div>
@@ -1260,7 +1328,7 @@ export default function InventoryPage() {
 
                 {(stockAdjustOpen.partialCases || []).length > 0 && (
                   <div className="rounded-md border p-3">
-                    <p className="text-sm font-medium mb-2">Open Partial Cases</p>
+                    <p className="text-sm font-medium mb-2">Open Partial Containers</p>
                     <div className="space-y-2">
                       {(stockAdjustOpen.partialCases || []).map(pc => (
                         <div key={pc.id} className="flex justify-between text-sm border-b pb-1">

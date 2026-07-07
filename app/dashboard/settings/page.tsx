@@ -3,13 +3,15 @@
 import { useState, useEffect } from "react"
 import { toast } from "sonner"
 import { 
-  Settings, Save, RefreshCw, Shield, Bell, 
+  Settings, Save, RefreshCw, Shield, 
   DollarSign, Package, Users, Printer, 
   Mail, Globe, Clock, Database, Moon, Sun,
   Monitor, Building, CreditCard, Truck,
   AlertCircle, CheckCircle, Eye, EyeOff,
   Phone, MapPin, Calendar, FileText, KeyRound,
-  Edit2, X, Check
+  Edit2, X, Check, Bell, FileSpreadsheet,
+  User, AtSign, Hash, UserCog, Lock,
+  MailCheck, CalendarDays, Clock as ClockIcon
 } from "lucide-react"
 import { useApp } from "@/lib/store"
 import { formatCurrency } from "@/lib/format"
@@ -47,56 +49,34 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { usersService } from "@/services"
+import { Badge } from "@/components/ui/badge"
 
-// Types
-interface CompanySettings {
+// Report Settings Interface
+interface ReportSettings {
+  id?: number
+  recipients: string[]
+  whatsappNumber: string
+  dailyEnabled: boolean
+  weeklyEnabled: boolean
+  monthlyEnabled: boolean
+  sendHour: number
+  weeklyWeekday: number
+  monthlyDay: number
+  lastDailySent?: string
+  lastWeeklySent?: string
+  lastMonthlySent?: string
+  updatedAt?: string
+}
+
+// User Profile Interface
+interface UserProfile {
+  id: number
   name: string
-  logo?: string
   email: string
+  role: string
   phone: string
-  address: string
-  city: string
-  country: string
-  taxId: string
-  currency: string
-  currencySymbol: string
-  receiptFooter: string
-}
-
-interface NotificationSettings {
-  lowStockAlert: boolean
-  lowStockThreshold: number
-  expiryAlert: boolean
-  expiryDays: number
-  dailyReport: boolean
-  weeklyReport: boolean
-  monthlyReport: boolean
-  reportEmail: string
-}
-
-interface InvoiceSettings {
-  prefix: string
-  nextNumber: number
-  footer: string
-  dueDays: number
-  enableTax: boolean
-  taxRate: number
-  enableDiscount: boolean
-}
-
-interface SecuritySettings {
-  sessionTimeout: number
-  require2FA: boolean
-  passwordExpiryDays: number
-  maxLoginAttempts: number
-  auditLog: boolean
-}
-
-interface BackupSettings {
-  autoBackup: boolean
-  backupFrequency: "daily" | "weekly" | "monthly"
-  backupTime: string
-  backupLocation: string
+  status: string
+  createdAt: string
 }
 
 // Password Change Modal Component
@@ -116,20 +96,6 @@ function ChangePasswordModal({
   const [showNew, setShowNew] = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)
   const [loading, setLoading] = useState(false)
-  const [user, setUser] = useState<any>(null)
-
-  useEffect(() => {
-    const fetchUser = async () => {
-      try {
-        const userData = await usersService.profileUser()
-        setUser(userData)
-      } catch (error) {
-        console.error("Failed to fetch user:", error)
-      }
-    }
-
-    fetchUser()
-  }, [])
 
   const handleSubmit = () => {
     if (!currentPassword) {
@@ -165,7 +131,10 @@ function ChangePasswordModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Change Password</DialogTitle>
+          <DialogTitle className="flex items-center gap-2">
+            <KeyRound className="size-5" />
+            Change Password
+          </DialogTitle>
           <DialogDescription>
             Update your password to keep your account secure
           </DialogDescription>
@@ -254,183 +223,34 @@ function ChangePasswordModal({
   )
 }
 
-// Company Info Edit Modal
-function CompanyInfoModal({ 
-  open, 
-  onOpenChange, 
-  company, 
-  onSave 
-}: { 
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  company: CompanySettings
-  onSave: (data: CompanySettings) => void
-}) {
-  const [formData, setFormData] = useState(company)
-
-  useEffect(() => {
-    setFormData(company)
-  }, [company])
-
-  const handleSubmit = () => {
-    onSave(formData)
-    onOpenChange(false)
-    toast.success("Company information updated")
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Edit Company Information</DialogTitle>
-          <DialogDescription>
-            Update your company details
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <Label>Company Name</Label>
-              <Input
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Email Address</Label>
-              <Input
-                type="email"
-                value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Phone Number</Label>
-              <Input
-                value={formData.phone}
-                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Tax ID (TIN)</Label>
-              <Input
-                value={formData.taxId}
-                onChange={(e) => setFormData({ ...formData, taxId: e.target.value })}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Address</Label>
-              <Input
-                value={formData.address}
-                onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>City</Label>
-              <Input
-                value={formData.city}
-                onChange={(e) => setFormData({ ...formData, city: e.target.value })}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Country</Label>
-              <Input
-                value={formData.country}
-                onChange={(e) => setFormData({ ...formData, country: e.target.value })}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Currency</Label>
-              <Select value={formData.currency} onValueChange={(v) => setFormData({ ...formData, currency: v })}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="RWF">Rwandan Franc (RWF)</SelectItem>
-                  <SelectItem value="USD">US Dollar (USD)</SelectItem>
-                  <SelectItem value="EUR">Euro (EUR)</SelectItem>
-                  <SelectItem value="GBP">British Pound (GBP)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Currency Symbol</Label>
-              <Input
-                value={formData.currencySymbol}
-                onChange={(e) => setFormData({ ...formData, currencySymbol: e.target.value })}
-                placeholder="FRw"
-              />
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label>Receipt Footer Message</Label>
-            <textarea
-              className="w-full min-h-[80px] rounded-md border border-input bg-background px-3 py-2 text-sm"
-              value={formData.receiptFooter}
-              onChange={(e) => setFormData({ ...formData, receiptFooter: e.target.value })}
-              placeholder="Thank you for your business!"
-            />
-          </div>
-        </div>
-
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
-          <Button onClick={handleSubmit}>
-            <Check className="size-4 mr-2" />
-            Save Changes
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
 export default function SettingsPage() {
   const { currentUser } = useApp()
   
-  // Company Settings
-  const [company, setCompany] = useState<CompanySettings>({
-    name: "Beer Depot",
-    email: "info@beerdepot.com",
-    phone: "+250 788 123 456",
-    address: "123 Main Street",
-    city: "Kigali",
-    country: "Rwanda",
-    taxId: "TAX-123456",
-    currency: "RWF",
-    currencySymbol: "FRw",
-    receiptFooter: "Thank you for your business!",
+  // Report Settings
+  const [reportSettings, setReportSettings] = useState<ReportSettings>({
+    recipients: [],
+    whatsappNumber: "",
+    dailyEnabled: true,
+    weeklyEnabled: true,
+    monthlyEnabled: true,
+    sendHour: 23,
+    weeklyWeekday: 6,
+    monthlyDay: 1
   })
 
-  // Notification Settings
-  const [notifications, setNotifications] = useState<NotificationSettings>({
-    lowStockAlert: true,
-    lowStockThreshold: 40,
-    expiryAlert: true,
-    expiryDays: 30,
-    dailyReport: true,
-    weeklyReport: true,
-    monthlyReport: true,
-    reportEmail: "reports@beerdepot.com",
-  })
-
-  // Invoice Settings
-  const [invoice, setInvoice] = useState<InvoiceSettings>({
-    prefix: "INV",
-    nextNumber: 1001,
-    footer: "Thank you for your business!",
-    dueDays: 30,
-    enableTax: true,
-    taxRate: 18,
-    enableDiscount: true,
+  // User Profile
+  const [userProfile, setUserProfile] = useState<UserProfile>({
+    id: 0,
+    name: "",
+    email: "",
+    role: "",
+    phone: "",
+    status: "",
+    createdAt: ""
   })
 
   // Security Settings
-  const [security, setSecurity] = useState<SecuritySettings>({
+  const [security, setSecurity] = useState({
     sessionTimeout: 30,
     require2FA: false,
     passwordExpiryDays: 90,
@@ -438,410 +258,245 @@ export default function SettingsPage() {
     auditLog: true,
   })
 
-  // Backup Settings
-  const [backup, setBackup] = useState<BackupSettings>({
-    autoBackup: true,
-    backupFrequency: "daily",
-    backupTime: "23:00",
-    backupLocation: "/backups",
-  })
-
-  // Theme Settings
-  const [theme, setTheme] = useState<"light" | "dark" | "system">("system")
-  
-  // Dialog states
-  const [resetDialogOpen, setResetDialogOpen] = useState(false)
+  // UI States
   const [passwordModalOpen, setPasswordModalOpen] = useState(false)
-  const [companyModalOpen, setCompanyModalOpen] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [recipientInput, setRecipientInput] = useState("")
 
-  // Load settings from localStorage on mount
+  // Load data on mount
   useEffect(() => {
-    const savedTheme = localStorage.getItem("theme") as "light" | "dark" | "system" | null
-    if (savedTheme) setTheme(savedTheme)
-    
-    const savedCompany = localStorage.getItem("companySettings")
-    if (savedCompany) setCompany(JSON.parse(savedCompany))
-    
-    const savedNotifications = localStorage.getItem("notificationSettings")
-    if (savedNotifications) setNotifications(JSON.parse(savedNotifications))
-    
-    const savedInvoice = localStorage.getItem("invoiceSettings")
-    if (savedInvoice) setInvoice(JSON.parse(savedInvoice))
+    const fetchData = async () => {
+      setLoading(true)
+      try {
+        // Fetch report settings
+        const reportData = await usersService.getSettings()
+        if (reportData) {
+          setReportSettings({
+            id: reportData.id,
+            recipients: reportData.recipients || [],
+            whatsappNumber: reportData.whatsappNumber || "",
+            dailyEnabled: reportData.dailyEnabled ?? true,
+            weeklyEnabled: reportData.weeklyEnabled ?? true,
+            monthlyEnabled: reportData.monthlyEnabled ?? true,
+            sendHour: reportData.sendHour ?? 23,
+            weeklyWeekday: reportData.weeklyWeekday ?? 6,
+            monthlyDay: reportData.monthlyDay ?? 1,
+            lastDailySent: reportData.lastDailySent,
+            lastWeeklySent: reportData.lastWeeklySent,
+            lastMonthlySent: reportData.lastMonthlySent,
+            updatedAt: reportData.updatedAt
+          })
+        }
+
+        // Fetch user profile
+        const userData:any = await usersService.profileUser()
+        if (userData) {
+          setUserProfile({
+            id: userData.id || 0 ,
+            name: userData.name || "",
+            email: userData.email || "",
+            role: userData.role || "",
+            phone: userData.phone || "",
+            status: userData.status || "",
+            createdAt: userData.createdAt || new Date().toISOString()
+          })
+        }
+      } catch (error) {
+        console.error('Failed to fetch settings:', error)
+        toast.error('Failed to load settings')
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchData()
   }, [])
 
-  // Apply theme
-  useEffect(() => {
-    const root = window.document.documentElement
-    if (theme === "system") {
-      const systemTheme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"
-      root.classList.remove("light", "dark")
-      root.classList.add(systemTheme)
-    } else {
-      root.classList.remove("light", "dark")
-      root.classList.add(theme)
+  // Add recipient
+  const addRecipient = () => {
+    if (!recipientInput.trim()) {
+      toast.error("Please enter an email address")
+      return
     }
-    localStorage.setItem("theme", theme)
-  }, [theme])
+    if (!recipientInput.includes("@")) {
+      toast.error("Please enter a valid email address")
+      return
+    }
+    if (reportSettings.recipients.includes(recipientInput.trim())) {
+      toast.error("Email already added")
+      return
+    }
+    setReportSettings({
+      ...reportSettings,
+      recipients: [...reportSettings.recipients, recipientInput.trim()]
+    })
+    setRecipientInput("")
+  }
 
-  // Save all settings
-  const handleSaveSettings = () => {
+  // Remove recipient
+  const removeRecipient = (email: string) => {
+    setReportSettings({
+      ...reportSettings,
+      recipients: reportSettings.recipients.filter(r => r !== email)
+    })
+  }
+
+  // Save report settings
+  const handleSaveReportSettings = async () => {
     setSaving(true)
-    setTimeout(() => {
-      localStorage.setItem("companySettings", JSON.stringify(company))
-      localStorage.setItem("notificationSettings", JSON.stringify(notifications))
-      localStorage.setItem("invoiceSettings", JSON.stringify(invoice))
-      localStorage.setItem("securitySettings", JSON.stringify(security))
-      localStorage.setItem("backupSettings", JSON.stringify(backup))
+    try {
+      await usersService.editReportSettings({
+        recipients: reportSettings.recipients,
+        whatsappNumber: reportSettings.whatsappNumber,
+        dailyEnabled: reportSettings.dailyEnabled,
+        weeklyEnabled: reportSettings.weeklyEnabled,
+        monthlyEnabled: reportSettings.monthlyEnabled,
+        sendHour: reportSettings.sendHour,
+        weeklyWeekday: reportSettings.weeklyWeekday,
+        monthlyDay: reportSettings.monthlyDay
+      })
+      toast.success("Report settings saved successfully")
+    } catch (error) {
+      console.error('Failed to save report settings:', error)
+      toast.error('Failed to save report settings')
+    } finally {
       setSaving(false)
-      toast.success("Settings saved successfully")
-    }, 500)
-  }
-
-  // Handle backup
-  const handleBackup = () => {
-    const data = {
-      company,
-      notifications,
-      invoice,
-      security,
-      backup,
-      theme,
-      timestamp: new Date().toISOString(),
     }
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement("a")
-    a.href = url
-    a.download = `beer-depot-backup-${new Date().toISOString().split("T")[0]}.json`
-    a.click()
-    URL.revokeObjectURL(url)
-    toast.success("Backup created successfully")
   }
 
-  // Handle reset
-  const handleReset = () => {
-    setCompany({
-      name: "Beer Depot",
-      email: "info@beerdepot.com",
-      phone: "+250 788 123 456",
-      address: "123 Main Street",
-      city: "Kigali",
-      country: "Rwanda",
-      taxId: "TAX-123456",
-      currency: "RWF",
-      currencySymbol: "FRw",
-      receiptFooter: "Thank you for your business!",
-    })
-    setNotifications({
-      lowStockAlert: true,
-      lowStockThreshold: 40,
-      expiryAlert: true,
-      expiryDays: 30,
-      dailyReport: true,
-      weeklyReport: true,
-      monthlyReport: true,
-      reportEmail: "reports@beerdepot.com",
-    })
-    setInvoice({
-      prefix: "INV",
-      nextNumber: 1001,
-      footer: "Thank you for your business!",
-      dueDays: 30,
-      enableTax: true,
-      taxRate: 18,
-      enableDiscount: true,
-    })
-    setSecurity({
-      sessionTimeout: 30,
-      require2FA: false,
-      passwordExpiryDays: 90,
-      maxLoginAttempts: 5,
-      auditLog: true,
-    })
-    setBackup({
-      autoBackup: true,
-      backupFrequency: "daily",
-      backupTime: "23:00",
-      backupLocation: "/backups",
-    })
-    toast.success("Settings reset to default")
-    setResetDialogOpen(false)
+  // Get role badge
+  const getRoleBadge = (role: string) => {
+    const colors: Record<string, string> = {
+      owner: "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400",
+      manager: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
+      admin: "bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-400",
+      cashier: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
+      storekeeper: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400",
+    }
+    return <Badge className={colors[role] || "bg-gray-100"}>{role || "Unknown"}</Badge>
   }
 
-  // Handle company update
-  const handleCompanyUpdate = (updatedCompany: CompanySettings) => {
-    setCompany(updatedCompany)
-    localStorage.setItem("companySettings", JSON.stringify(updatedCompany))
-    toast.success("Company information updated")
+  // Get status badge
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case "active":
+        return <Badge className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400">Active</Badge>
+      case "inactive":
+        return <Badge className="bg-gray-100 text-gray-800 dark:bg-gray-800/50 dark:text-gray-400">Inactive</Badge>
+      case "suspended":
+        return <Badge className="bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400">Suspended</Badge>
+      default:
+        return <Badge>{status || "Unknown"}</Badge>
+    }
+  }
+
+  // Loading state
+  if (loading) {
+    return (
+      <>
+        <DashboardHeader 
+          title="Settings" 
+          description="Configure your system settings"
+        />
+        <div className="flex items-center justify-center h-64">
+          <div className="text-center">
+            <RefreshCw className="mx-auto size-8 animate-spin text-muted-foreground" />
+            <p className="mt-2 text-sm text-muted-foreground">Loading settings...</p>
+          </div>
+        </div>
+      </>
+    )
   }
 
   return (
     <>
       <DashboardHeader 
         title="Settings" 
-        description="Configure your beer depot management system"
+        description="Configure your system settings"
       />
 
       <div className="flex flex-col gap-6 p-4 md:p-6">
-        <Tabs defaultValue="general" className="space-y-4">
+        <Tabs defaultValue="profile" className="space-y-4">
           <TabsList className="flex-wrap h-auto">
-            <TabsTrigger value="general">General</TabsTrigger>
-            <TabsTrigger value="notifications">Notifications</TabsTrigger>
-            <TabsTrigger value="invoicing">Invoicing</TabsTrigger>
-            <TabsTrigger value="security">Security</TabsTrigger>
-            <TabsTrigger value="backup">Backup</TabsTrigger>
-            <TabsTrigger value="appearance">Appearance</TabsTrigger>
+            <TabsTrigger value="profile">
+              <User className="size-4 mr-2" />
+              Profile
+            </TabsTrigger>
+            <TabsTrigger value="reports">
+              <FileSpreadsheet className="size-4 mr-2" />
+              Reports
+            </TabsTrigger>
+            <TabsTrigger value="security">
+              <Shield className="size-4 mr-2" />
+              Security
+            </TabsTrigger>
           </TabsList>
 
-          {/* General Settings - Updated with Display Cards */}
-          <TabsContent value="general" className="space-y-4">
-            {/* Company Information Card */}
+          {/* Profile Tab */}
+          <TabsContent value="profile" className="space-y-4">
             <Card className="p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold flex items-center gap-2">
-                  <Building className="size-5" />
-                  Company Information
-                </h3>
-                <Button variant="outline" size="sm" onClick={() => setCompanyModalOpen(true)}>
-                  <Edit2 className="size-4 mr-2" />
-                  Edit Information
-                </Button>
-              </div>
+              <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                <UserCog className="size-5" />
+                Profile Information
+              </h3>
               
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-1">
-                  <p className="text-sm text-muted-foreground">Company Name</p>
-                  <p className="font-medium">{company.name}</p>
+                  <p className="text-sm text-muted-foreground flex items-center gap-1">
+                    <User className="size-3" />
+                    Full Name
+                  </p>
+                  <p className="font-medium">{userProfile.name || "Not set"}</p>
                 </div>
                 <div className="space-y-1">
-                  <p className="text-sm text-muted-foreground">Email Address</p>
-                  <p className="font-medium">{company.email}</p>
+                  <p className="text-sm text-muted-foreground flex items-center gap-1">
+                    <AtSign className="size-3" />
+                    Email Address
+                  </p>
+                  <p className="font-medium">{userProfile.email || "Not set"}</p>
                 </div>
                 <div className="space-y-1">
-                  <p className="text-sm text-muted-foreground">Phone Number</p>
-                  <p className="font-medium">{company.phone}</p>
+                  <p className="text-sm text-muted-foreground flex items-center gap-1">
+                    <Phone className="size-3" />
+                    Phone Number
+                  </p>
+                  <p className="font-medium">{userProfile.phone || "Not set"}</p>
                 </div>
                 <div className="space-y-1">
-                  <p className="text-sm text-muted-foreground">Tax ID (TIN)</p>
-                  <p className="font-medium">{company.taxId}</p>
+                  <p className="text-sm text-muted-foreground flex items-center gap-1">
+                    <Hash className="size-3" />
+                    User ID
+                  </p>
+                  <p className="font-medium">#{userProfile.id || "N/A"}</p>
                 </div>
                 <div className="space-y-1">
-                  <p className="text-sm text-muted-foreground">Address</p>
-                  <p className="font-medium">{company.address}</p>
+                  <p className="text-sm text-muted-foreground flex items-center gap-1">
+                    <Shield className="size-3" />
+                    Role
+                  </p>
+                  <div>{getRoleBadge(userProfile.role)}</div>
                 </div>
                 <div className="space-y-1">
-                  <p className="text-sm text-muted-foreground">City</p>
-                  <p className="font-medium">{company.city}</p>
+                  <p className="text-sm text-muted-foreground flex items-center gap-1">
+                    <CheckCircle className="size-3" />
+                    Status
+                  </p>
+                  <div>{getStatusBadge(userProfile.status)}</div>
                 </div>
                 <div className="space-y-1">
-                  <p className="text-sm text-muted-foreground">Country</p>
-                  <p className="font-medium">{company.country}</p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-sm text-muted-foreground">Currency</p>
-                  <p className="font-medium">{company.currency} ({company.currencySymbol})</p>
-                </div>
-              </div>
-            </Card>
-
-            {/* Receipt Settings Card */}
-            <Card className="p-6">
-              <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                <FileText className="size-5" />
-                Receipt Settings
-              </h3>
-              <div className="space-y-2">
-                <p className="text-sm text-muted-foreground">Receipt Footer Message</p>
-                <p className="p-3 bg-muted rounded-md text-sm">{company.receiptFooter}</p>
-              </div>
-            </Card>
-          </TabsContent>
-
-          {/* Notification Settings - Same as before */}
-          <TabsContent value="notifications" className="space-y-4">
-            <Card className="p-6">
-              <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                <Bell className="size-5" />
-                Alert Settings
-              </h3>
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-medium">Low Stock Alerts</p>
-                    <p className="text-sm text-muted-foreground">Get notified when stock falls below threshold</p>
-                  </div>
-                  <Switch
-                    checked={notifications.lowStockAlert}
-                    onCheckedChange={(v) => setNotifications({ ...notifications, lowStockAlert: v })}
-                  />
-                </div>
-                {notifications.lowStockAlert && (
-                  <div className="ml-6 space-y-2">
-                    <Label>Low Stock Threshold (cases)</Label>
-                    <Input
-                      type="number"
-                      value={notifications.lowStockThreshold}
-                      onChange={(e) => setNotifications({ ...notifications, lowStockThreshold: Number(e.target.value) })}
-                      className="max-w-xs"
-                    />
-                  </div>
-                )}
-
-                <Separator />
-
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-medium">Expiry Alerts</p>
-                    <p className="text-sm text-muted-foreground">Get notified when products are about to expire</p>
-                  </div>
-                  <Switch
-                    checked={notifications.expiryAlert}
-                    onCheckedChange={(v) => setNotifications({ ...notifications, expiryAlert: v })}
-                  />
-                </div>
-                {notifications.expiryAlert && (
-                  <div className="ml-6 space-y-2">
-                    <Label>Days before expiry to alert</Label>
-                    <Input
-                      type="number"
-                      value={notifications.expiryDays}
-                      onChange={(e) => setNotifications({ ...notifications, expiryDays: Number(e.target.value) })}
-                      className="max-w-xs"
-                    />
-                  </div>
-                )}
-
-                <Separator />
-
-                <div className="space-y-3">
-                  <p className="font-medium">Email Reports</p>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm">Daily Sales Report</span>
-                    <Switch
-                      checked={notifications.dailyReport}
-                      onCheckedChange={(v) => setNotifications({ ...notifications, dailyReport: v })}
-                    />
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm">Weekly Summary Report</span>
-                    <Switch
-                      checked={notifications.weeklyReport}
-                      onCheckedChange={(v) => setNotifications({ ...notifications, weeklyReport: v })}
-                    />
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm">Monthly Performance Report</span>
-                    <Switch
-                      checked={notifications.monthlyReport}
-                      onCheckedChange={(v) => setNotifications({ ...notifications, monthlyReport: v })}
-                    />
-                  </div>
-                  <div className="space-y-2 mt-4">
-                    <Label>Report Email Address</Label>
-                    <Input
-                      type="email"
-                      value={notifications.reportEmail}
-                      onChange={(e) => setNotifications({ ...notifications, reportEmail: e.target.value })}
-                      className="max-w-md"
-                    />
-                  </div>
-                </div>
-              </div>
-            </Card>
-          </TabsContent>
-
-          {/* Invoice Settings - Same as before */}
-          <TabsContent value="invoicing" className="space-y-4">
-            <Card className="p-6">
-              <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                <Printer className="size-5" />
-                Invoice Configuration
-              </h3>
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label>Invoice Prefix</Label>
-                  <Input
-                    value={invoice.prefix}
-                    onChange={(e) => setInvoice({ ...invoice, prefix: e.target.value })}
-                    placeholder="INV"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Next Invoice Number</Label>
-                  <Input
-                    type="number"
-                    value={invoice.nextNumber}
-                    onChange={(e) => setInvoice({ ...invoice, nextNumber: Number(e.target.value) })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Due Days (Payment Terms)</Label>
-                  <Input
-                    type="number"
-                    value={invoice.dueDays}
-                    onChange={(e) => setInvoice({ ...invoice, dueDays: Number(e.target.value) })}
-                  />
-                </div>
-                <div className="space-y-2 col-span-2">
-                  <Label>Invoice Footer</Label>
-                  <textarea
-                    className="w-full min-h-[80px] rounded-md border border-input bg-background px-3 py-2 text-sm"
-                    value={invoice.footer}
-                    onChange={(e) => setInvoice({ ...invoice, footer: e.target.value })}
-                    placeholder="Thank you for your business!"
-                  />
+                  <p className="text-sm text-muted-foreground flex items-center gap-1">
+                    <Calendar className="size-3" />
+                    Member Since
+                  </p>
+                  <p className="font-medium">
+                    {userProfile.createdAt ? new Date(userProfile.createdAt).toLocaleDateString() : "N/A"}
+                  </p>
                 </div>
               </div>
 
               <Separator className="my-4" />
 
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-medium">Enable Tax</p>
-                    <p className="text-sm text-muted-foreground">Apply tax to all invoices</p>
-                  </div>
-                  <Switch
-                    checked={invoice.enableTax}
-                    onCheckedChange={(v) => setInvoice({ ...invoice, enableTax: v })}
-                  />
-                </div>
-                {invoice.enableTax && (
-                  <div className="ml-6 space-y-2">
-                    <Label>Tax Rate (%)</Label>
-                    <Input
-                      type="number"
-                      value={invoice.taxRate}
-                      onChange={(e) => setInvoice({ ...invoice, taxRate: Number(e.target.value) })}
-                      className="max-w-xs"
-                    />
-                  </div>
-                )}
-
-                <Separator />
-
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-medium">Enable Discounts</p>
-                    <p className="text-sm text-muted-foreground">Allow discounts on invoices</p>
-                  </div>
-                  <Switch
-                    checked={invoice.enableDiscount}
-                    onCheckedChange={(v) => setInvoice({ ...invoice, enableDiscount: v })}
-                  />
-                </div>
-              </div>
-            </Card>
-          </TabsContent>
-
-          {/* Security Settings */}
-          <TabsContent value="security" className="space-y-4">
-            <Card className="p-6">
-              <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                <KeyRound className="size-5" />
-                Password Management
-              </h3>
               <div className="flex items-center justify-between">
                 <div>
                   <p className="font-medium">Change Password</p>
@@ -853,11 +508,242 @@ export default function SettingsPage() {
                 </Button>
               </div>
             </Card>
+          </TabsContent>
 
+          {/* Reports Tab */}
+          <TabsContent value="reports" className="space-y-4">
+            <Card className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold flex items-center gap-2">
+                  <FileSpreadsheet className="size-5" />
+                  Report Settings
+                </h3>
+                <Button onClick={handleSaveReportSettings} disabled={saving}>
+                  {saving ? (
+                    <RefreshCw className="size-4 mr-2 animate-spin" />
+                  ) : (
+                    <Save className="size-4 mr-2" />
+                  )}
+                  {saving ? "Saving..." : "Save Settings"}
+                </Button>
+              </div>
+
+              <div className="space-y-6">
+                {/* Email Recipients */}
+                <div className="space-y-3">
+                  <Label className="font-medium">Email Recipients</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Add email addresses to receive automated reports
+                  </p>
+                  
+                  <div className="flex gap-2">
+                    <Input
+                      value={recipientInput}
+                      onChange={(e) => setRecipientInput(e.target.value)}
+                      placeholder="Enter email address"
+                      className="flex-1"
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault()
+                          addRecipient()
+                        }
+                      }}
+                    />
+                    <Button onClick={addRecipient} variant="outline">
+                      <Mail className="size-4 mr-2" />
+                      Add
+                    </Button>
+                  </div>
+
+                  {reportSettings.recipients.length > 0 ? (
+                    <div className="flex flex-wrap gap-2 mt-3">
+                      {reportSettings.recipients.map((email, index) => (
+                        <Badge key={index} variant="secondary" className="flex items-center gap-1 px-3 py-1.5">
+                          <Mail className="size-3" />
+                          {email}
+                          <button
+                            onClick={() => removeRecipient(email)}
+                            className="ml-1 hover:text-destructive transition-colors"
+                          >
+                            <X className="size-3" />
+                          </button>
+                        </Badge>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground mt-2">
+                      No recipients added yet
+                    </p>
+                  )}
+                </div>
+
+                <Separator />
+
+                {/* WhatsApp Number */}
+                <div className="space-y-2">
+                  <Label className="font-medium">WhatsApp Number</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Phone number for WhatsApp notifications
+                  </p>
+                  <Input
+                    value={reportSettings.whatsappNumber}
+                    onChange={(e) => setReportSettings({ ...reportSettings, whatsappNumber: e.target.value })}
+                    placeholder="+250 788 123 456"
+                    className="max-w-md"
+                  />
+                </div>
+
+                <Separator />
+
+                {/* Schedule Settings */}
+                <div className="space-y-4">
+                  <Label className="font-medium">Report Schedule</Label>
+                  
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="font-medium">Daily Reports</p>
+                        <p className="text-sm text-muted-foreground">Send daily summary reports</p>
+                      </div>
+                      <Switch
+                        checked={reportSettings.dailyEnabled}
+                        onCheckedChange={(v) => setReportSettings({ ...reportSettings, dailyEnabled: v })}
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="font-medium">Weekly Reports</p>
+                        <p className="text-sm text-muted-foreground">Send weekly summary reports</p>
+                      </div>
+                      <Switch
+                        checked={reportSettings.weeklyEnabled}
+                        onCheckedChange={(v) => setReportSettings({ ...reportSettings, weeklyEnabled: v })}
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="font-medium">Monthly Reports</p>
+                        <p className="text-sm text-muted-foreground">Send monthly summary reports</p>
+                      </div>
+                      <Switch
+                        checked={reportSettings.monthlyEnabled}
+                        onCheckedChange={(v) => setReportSettings({ ...reportSettings, monthlyEnabled: v })}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <Separator />
+
+                {/* Schedule Details */}
+                <div className="grid gap-4 md:grid-cols-3">
+                  <div className="space-y-2">
+                    <Label>Send Hour (24h)</Label>
+                    <Select 
+                      value={String(reportSettings.sendHour)} 
+                      onValueChange={(v) => setReportSettings({ ...reportSettings, sendHour: Number(v) })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Array.from({ length: 24 }, (_, i) => (
+                          <SelectItem key={i} value={String(i)}>
+                            {i}:00 {i < 12 ? "AM" : "PM"}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Weekly Day</Label>
+                    <Select 
+                      value={String(reportSettings.weeklyWeekday)} 
+                      onValueChange={(v) => setReportSettings({ ...reportSettings, weeklyWeekday: Number(v) })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="0">Sunday</SelectItem>
+                        <SelectItem value="1">Monday</SelectItem>
+                        <SelectItem value="2">Tuesday</SelectItem>
+                        <SelectItem value="3">Wednesday</SelectItem>
+                        <SelectItem value="4">Thursday</SelectItem>
+                        <SelectItem value="5">Friday</SelectItem>
+                        <SelectItem value="6">Saturday</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Monthly Day</Label>
+                    <Select 
+                      value={String(reportSettings.monthlyDay)} 
+                      onValueChange={(v) => setReportSettings({ ...reportSettings, monthlyDay: Number(v) })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Array.from({ length: 28 }, (_, i) => (
+                          <SelectItem key={i} value={String(i + 1)}>
+                            Day {i + 1}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                {/* Last Sent Information */}
+                {reportSettings.updatedAt && (
+                  <>
+                    <Separator />
+                    <div className="grid gap-2 md:grid-cols-3">
+                      <div className="space-y-1">
+                        <p className="text-sm text-muted-foreground flex items-center gap-1">
+                          <ClockIcon className="size-3" />
+                          Last Daily Sent
+                        </p>
+                        <p className="text-sm font-medium">
+                          {reportSettings.lastDailySent ? new Date(reportSettings.lastDailySent).toLocaleString() : "Never"}
+                        </p>
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-sm text-muted-foreground flex items-center gap-1">
+                          <CalendarDays className="size-3" />
+                          Last Weekly Sent
+                        </p>
+                        <p className="text-sm font-medium">
+                          {reportSettings.lastWeeklySent ? new Date(reportSettings.lastWeeklySent).toLocaleString() : "Never"}
+                        </p>
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-sm text-muted-foreground flex items-center gap-1">
+                          <MailCheck className="size-3" />
+                          Last Monthly Sent
+                        </p>
+                        <p className="text-sm font-medium">
+                          {reportSettings.lastMonthlySent ? new Date(reportSettings.lastMonthlySent).toLocaleString() : "Never"}
+                        </p>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            </Card>
+          </TabsContent>
+
+          {/* Security Tab */}
+          <TabsContent value="security" className="space-y-4">
             <Card className="p-6">
               <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                <Shield className="size-5" />
-                Security Configuration
+                <Lock className="size-5" />
+                Security Settings
               </h3>
               <div className="space-y-4">
                 <div className="grid gap-4 md:grid-cols-2">
@@ -868,6 +754,9 @@ export default function SettingsPage() {
                       value={security.sessionTimeout}
                       onChange={(e) => setSecurity({ ...security, sessionTimeout: Number(e.target.value) })}
                     />
+                    <p className="text-xs text-muted-foreground">
+                      Time before auto-logout due to inactivity
+                    </p>
                   </div>
                   <div className="space-y-2">
                     <Label>Password Expiry (days)</Label>
@@ -876,6 +765,9 @@ export default function SettingsPage() {
                       value={security.passwordExpiryDays}
                       onChange={(e) => setSecurity({ ...security, passwordExpiryDays: Number(e.target.value) })}
                     />
+                    <p className="text-xs text-muted-foreground">
+                      Days before password must be changed
+                    </p>
                   </div>
                   <div className="space-y-2">
                     <Label>Max Login Attempts</Label>
@@ -884,6 +776,9 @@ export default function SettingsPage() {
                       value={security.maxLoginAttempts}
                       onChange={(e) => setSecurity({ ...security, maxLoginAttempts: Number(e.target.value) })}
                     />
+                    <p className="text-xs text-muted-foreground">
+                      Failed attempts before account lockout
+                    </p>
                   </div>
                 </div>
 
@@ -910,134 +805,21 @@ export default function SettingsPage() {
                     onCheckedChange={(v) => setSecurity({ ...security, auditLog: v })}
                   />
                 </div>
-              </div>
-            </Card>
-          </TabsContent>
 
-          {/* Backup Settings */}
-          <TabsContent value="backup" className="space-y-4">
-            <Card className="p-6">
-              <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                <Database className="size-5" />
-                Backup Configuration
-              </h3>
-              <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="font-medium">Automatic Backups</p>
-                    <p className="text-sm text-muted-foreground">Schedule regular system backups</p>
+                    <p className="font-medium">Force Password Change</p>
+                    <p className="text-sm text-muted-foreground">Require users to change password on next login</p>
                   </div>
-                  <Switch
-                    checked={backup.autoBackup}
-                    onCheckedChange={(v) => setBackup({ ...backup, autoBackup: v })}
-                  />
-                </div>
-
-                {backup.autoBackup && (
-                  <>
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <div className="space-y-2">
-                        <Label>Backup Frequency</Label>
-                        <Select value={backup.backupFrequency} onValueChange={(v: any) => setBackup({ ...backup, backupFrequency: v })}>
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="daily">Daily</SelectItem>
-                            <SelectItem value="weekly">Weekly</SelectItem>
-                            <SelectItem value="monthly">Monthly</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Backup Time (24h)</Label>
-                        <Input
-                          type="time"
-                          value={backup.backupTime}
-                          onChange={(e) => setBackup({ ...backup, backupTime: e.target.value })}
-                        />
-                      </div>
-                    </div>
-                  </>
-                )}
-
-                <Separator />
-
-                <div className="flex gap-4">
-                  <Button variant="outline" onClick={handleBackup}>
-                    <Database className="size-4 mr-2" />
-                    Create Manual Backup
+                  <Button variant="outline" size="sm">
+                    Force Now
                   </Button>
                 </div>
               </div>
             </Card>
           </TabsContent>
-
-          {/* Appearance Settings */}
-          <TabsContent value="appearance" className="space-y-4">
-            <Card className="p-6">
-              <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                <Monitor className="size-5" />
-                Theme Preferences
-              </h3>
-              <div className="space-y-4">
-                <div className="grid gap-4 md:grid-cols-3">
-                  <button
-                    onClick={() => setTheme("light")}
-                    className={`flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-all ${
-                      theme === "light" ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"
-                    }`}
-                  >
-                    <Sun className="size-8" />
-                    <span className="text-sm font-medium">Light</span>
-                  </button>
-                  <button
-                    onClick={() => setTheme("dark")}
-                    className={`flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-all ${
-                      theme === "dark" ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"
-                    }`}
-                  >
-                    <Moon className="size-8" />
-                    <span className="text-sm font-medium">Dark</span>
-                  </button>
-                  <button
-                    onClick={() => setTheme("system")}
-                    className={`flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-all ${
-                      theme === "system" ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"
-                    }`}
-                  >
-                    <Monitor className="size-8" />
-                    <span className="text-sm font-medium">System</span>
-                  </button>
-                </div>
-              </div>
-            </Card>
-          </TabsContent>
         </Tabs>
-
-        {/* Save and Reset Buttons */}
-        <div className="flex justify-end gap-4 pt-4 border-t">
-          <Button variant="outline" onClick={() => setResetDialogOpen(true)}>
-            Reset to Defaults
-          </Button>
-          <Button onClick={handleSaveSettings} disabled={saving}>
-            {saving ? (
-              <RefreshCw className="size-4 mr-2 animate-spin" />
-            ) : (
-              <Save className="size-4 mr-2" />
-            )}
-            {saving ? "Saving..." : "Save Settings"}
-          </Button>
-        </div>
       </div>
-
-      {/* Company Info Edit Modal */}
-      <CompanyInfoModal 
-        open={companyModalOpen}
-        onOpenChange={setCompanyModalOpen}
-        company={company}
-        onSave={handleCompanyUpdate}
-      />
 
       {/* Password Change Modal */}
       <ChangePasswordModal 
@@ -1045,24 +827,6 @@ export default function SettingsPage() {
         onOpenChange={setPasswordModalOpen}
         onSuccess={() => {}}
       />
-
-      {/* Reset Confirmation Dialog */}
-      <AlertDialog open={resetDialogOpen} onOpenChange={setResetDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Reset All Settings?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will reset all settings to their default values. This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleReset} className="bg-destructive text-destructive-foreground">
-              Reset All
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </>
   )
 }

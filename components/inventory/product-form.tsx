@@ -32,7 +32,6 @@ import {
   DollarSign,
   ClipboardList,
   Box,
-  FlaskConical,
   Ruler,
   Pencil
 } from "lucide-react"
@@ -193,6 +192,10 @@ export function ProductForm({
   
   const isInitialized = useRef(false)
   
+  // Get initial container config
+  const initialCategory = initial?.category || "Beer"
+  const initialConfig = getContainerConfig(initialCategory)
+  
   // Initialize form state with proper defaults
   const [v, setV] = useState<ProductFormValues>(() => ({
     name: initial?.name ?? "",
@@ -218,8 +221,8 @@ export function ProductForm({
     },
     partialCases: (initial as any)?.partialCases ?? [],
     lastStockCheck: (initial as any)?.lastStockCheck ?? new Date(),
-    containerType: (initial as any)?.containerType ?? "case",
-    bottlesPerContainer: (initial as any)?.bottlesPerContainer ?? 24,
+    containerType: (initial as any)?.containerType ?? initialConfig.type,
+    bottlesPerContainer: (initial as any)?.bottlesPerContainer ?? initialConfig.defaultBottlesPerContainer,
     containerSizeLabel: (initial as any)?.containerSizeLabel ?? "Grand",
     bottleType: (initial as any)?.bottleType ?? "grand",
   }))
@@ -330,12 +333,17 @@ export function ProductForm({
       bottleType: v.bottleType,
     }
 
-    setV(prev => ({
-      ...prev,
-      partialCases: [...(prev.partialCases || []), newPartialCase],
-      fullCases: prev.fullCases - 1,
-    }))
+    // CRITICAL FIX: Properly update the partialCases array
+    setV(prev => {
+      const updatedPartialCases = [...(prev.partialCases || []), newPartialCase]
+      return {
+        ...prev,
+        partialCases: updatedPartialCases,
+        fullCases: prev.fullCases - 1,
+      }
+    })
 
+    // Reset form fields
     setNewPartialCaseBottles(Math.floor(BOTTLES_PER_CONTAINER / 2))
     setNewPartialCaseReason("sold_individual")
     setNewPartialCaseNotes("")
@@ -344,16 +352,16 @@ export function ProductForm({
       delete newErrors.partialCases
       return newErrors
     })
+    
+    toast.success(`Opened new partial ${containerConfig.containerLabel.toLowerCase()} with ${newPartialCaseBottles} bottles`)
   }
 
   function removePartialCase(id: string) {
-    const partialCaseToRemove = (v.partialCases || []).find(pc => pc.id === id)
-    if (partialCaseToRemove) {
-      setV(prev => ({
-        ...prev,
-        partialCases: (prev.partialCases || []).filter(pc => pc.id !== id),
-      }))
-    }
+    setV(prev => ({
+      ...prev,
+      partialCases: (prev.partialCases || []).filter(pc => pc.id !== id),
+    }))
+    toast.info("Partial container removed")
   }
 
   function updatePartialCaseBottles(id: string, newBottleCount: number) {
@@ -403,6 +411,7 @@ export function ProductForm({
     e.preventDefault()
     if (!validateForm()) return
 
+    // Calculate per-bottle prices
     const purchasePricePerBottle = BOTTLES_PER_CONTAINER > 0 
       ? (v.purchasePricePerContainer ?? 0) / BOTTLES_PER_CONTAINER 
       : 0
@@ -410,16 +419,58 @@ export function ProductForm({
       ? (v.sellingPricePerContainer ?? 0) / BOTTLES_PER_CONTAINER 
       : 0
 
-    onSubmit({
-      ...v,
-      manufactureDate: new Date(v.manufactureDate).toISOString(),
-      expiryDate: new Date(v.expiryDate).toISOString(),
-      lastStockCheck: new Date(),
-      bottlesPerContainer: BOTTLES_PER_CONTAINER,
+    // Ensure bottleInfo has notes field
+    const bottleInfo = v.bottleInfo || {
+      damaged: 0,
+      missing: 0,
+      returned: 0,
+      notes: "",
+    }
+
+    // Create complete product data with ALL fields
+    const productData: ProductFormValues = {
+      // Basic Information
+      name: v.name,
+      brand: v.brand,
+      category: v.category,
+      supplier: v.supplier,
+      
+      // Stock Information
+      fullCases: v.fullCases,
+      emptyCases: v.emptyCases,
+      lowStockThreshold: v.lowStockThreshold,
+      depositAmount: v.depositAmount,
+      
+      // Container Configuration
+      containerType: v.containerType || containerConfig.type,
+      containerSizeLabel: v.containerSizeLabel || (v.bottleType === "small" ? "Small" : "Grand"),
+      bottlesPerContainer: v.bottlesPerContainer ?? 24,
+      bottleType: v.bottleType || "grand",
+      
+      // Pricing (BOTH per container AND per bottle)
+      purchasePricePerContainer: v.purchasePricePerContainer ?? 0,
+      sellingPricePerContainer: v.sellingPricePerContainer ?? 0,
       purchasePrice: purchasePricePerBottle,
       sellingPrice: sellingPricePerBottle,
-      bottleType: v.bottleType || "grand",
+      
+      // CRITICAL FIX: Ensure bottleInfo and partialCases are properly included
+      bottleInfo: bottleInfo,
+      partialCases: v.partialCases || [],
+      lastStockCheck: new Date(),
+      
+      // Dates
+      manufactureDate: new Date(v.manufactureDate).toISOString(),
+      expiryDate: new Date(v.expiryDate).toISOString(),
+      batchNumber: v.batchNumber,
+    }
+
+    console.log('Submitting product data with bottleInfo and partialCases:', {
+      bottleInfo: productData.bottleInfo,
+      partialCases: productData.partialCases,
+      fullData: productData
     })
+    
+    onSubmit(productData)
   }
 
   const getReasonLabel = (reason: string) => {

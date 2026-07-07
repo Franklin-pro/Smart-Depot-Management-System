@@ -32,15 +32,35 @@ export const salesService = {
     return response.data;
   },
 
-  // Update a sale
-  async update(id: string, sale: Partial<Sale>): Promise<Sale> {
-    const response = await api.patch(`/sales/${id}`, sale);
+  // Add this to your sales.service.ts
+async recordPayment(saleId: string, paymentData: { 
+  amount: number; 
+  method: string; 
+  receivedBy: string; 
+  note?: string;
+}): Promise<Sale> {
+  const response = await api.post(`/sales/${saleId}/payments`, paymentData);
+  return response.data;
+},
+  async getPayments(saleId: string): Promise<Array<{
+    id: string;
+    amount: number;
+    method: string;
+    receivedBy: string;
+    note?: string;
+    createdAt: string;
+  }>> {
+    const response = await api.get(`/sales/${saleId}/payments`);
     return response.data;
   },
 
   // Delete a sale
   async delete(id: string): Promise<void> {
     await api.delete(`/sales/${id}`);
+  },
+
+    async paymentRecorded(record_id: string): Promise<void> {
+    await api.get(`/sales/${record_id}/payments`);
   },
 
   // Get sales by customer

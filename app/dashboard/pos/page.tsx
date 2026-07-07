@@ -159,8 +159,8 @@ export default function PosPage() {
           productId: p.id,
           name: p.name,
           quantity: 1,
-          unitPrice: p.sellingPrice,
-          subtotal: p.sellingPrice,
+          unitPrice: p.sellingPricePerContainer,
+          subtotal: p.sellingPricePerContainer,
           max: p.fullCases,
           emptyCasesReturned: 0,
           remainingEmptyCases: 0,
@@ -369,7 +369,7 @@ export default function PosPage() {
                   </div>
 
                   <div className="mt-auto flex items-center justify-between">
-                    <span className="text-base font-semibold">{formatCurrency(p.sellingPrice)}</span>
+                    <span className="text-base font-semibold">{formatCurrency(p.sellingPricePerContainer)}</span>
                     {status === "expiring" && (
                       <Badge variant="outline" className="border-amber-400/50 text-[10px] text-amber-600 dark:text-amber-400 px-1.5 py-0">
                         Expiring

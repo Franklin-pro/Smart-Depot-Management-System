@@ -44,13 +44,38 @@ export const usersService = {
     return response.data;
   },
 
+  async forgotPassword(email: string): Promise<void> {
+    // Implement forgot password logic here
+     const response = await api.post('/auth/forgot-password', { email });
+    return response.data;
+  },
+
+  async resetPassword(data:any): Promise<void> {
+    // Implement reset password logic here
+    const response = await api.post(`/auth/reset-password`, data);
+    return response.data;
+  },
+
   // Logout
   async logout(): Promise<void> {
     apiLogout();
   },
 
+  async  changePassword(data:any): Promise<void> {
+    const response = await api.post('/auth/change-password', data);
+    return response.data;
+  },
+
   // Get current user from localStorage
   getCurrentUser(): User | null {
     return currentUser();
+  },
+  async getSettings(): Promise<any> {
+    const response = await api.get('/reports/settings');
+    return response.data;
+  },
+    async editReportSettings(settings: any): Promise<any> {
+    const response = await api.put('/reports/settings', settings);
+    return response.data;
   }
 };

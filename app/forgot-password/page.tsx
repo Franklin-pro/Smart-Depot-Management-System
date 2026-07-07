@@ -8,6 +8,7 @@ import { AuthShell } from "@/components/auth/auth-shell"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { usersService } from "@/services"
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("")
@@ -15,13 +16,15 @@ export default function ForgotPasswordPage() {
   const [sent, setSent] = useState(false)
 
   function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    setLoading(true)
-    setTimeout(() => {
-      setLoading(false)
-      setSent(true)
-      toast.success("Reset link sent to your email")
-    }, 700)
+        try{
+          const response = usersService.forgotPassword(email);
+          setSent(true);
+          toast.success("Password reset link sent to your email");
+        }
+        catch(error:any){
+          console.error("error", error);
+          toast.error("Failed to send password reset link");
+        }
   }
 
   return (
