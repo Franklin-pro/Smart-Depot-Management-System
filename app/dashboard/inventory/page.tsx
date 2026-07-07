@@ -129,8 +129,8 @@ interface ExtendedProduct extends Product {
   containerType?: "case" | "box"
   containerSizeLabel?: string
   bottleType?: "small" | "grand"
-  purchasePricePerContainer?: number
-  sellingPricePerContainer?: number
+  purchasePricePerContainer: number  // Required
+  sellingPricePerContainer: number   // Required
 }
 
 export default function InventoryPage() {
