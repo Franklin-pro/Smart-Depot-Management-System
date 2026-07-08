@@ -370,7 +370,7 @@ function ExpenseForm({
         invoiceNumber: invoiceNumber || undefined,
         receiptNumber: receiptNumber || undefined,
         notes: notes || undefined,
-        file: file || undefined,
+        // file: file || undefined,
       })
     } else {
       toast.error('Please fix all validation errors')

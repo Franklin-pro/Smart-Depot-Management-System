@@ -68,10 +68,26 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { emptyCaseTransactionsService } from "@/services"
+import { emptyCaseTransactionsService, transactionAuditsService } from "@/services"
 
 // ============================================
-// FORM COMPONENTS (defined before main component)
+// TYPES
+// ============================================
+
+interface AuditLogEntry {
+  id: string;
+  transactionId: string;
+  transactionType: "empty_case" | "supplier_return" | "damage_report";
+  action: "created" | "updated" | "deleted" | "processed";
+  previousState?: any;
+  newState?: any;
+  performedBy: string;
+  performedAt: string;
+  notes?: string;
+}
+
+// ============================================
+// FORM COMPONENTS
 // ============================================
 
 function EmptyCaseTransactionForm({ 
@@ -196,14 +212,19 @@ function EmptyCaseTransactionForm({
         </Button>
         <Button onClick={() => onSubmit({
           productId: selectedProduct,
+          productName: selectedProductData?.name || "",
           customerId: selectedCustomer,
           customerName: selectedCustomerData?.name,
           transactionType,
           totalQuantity: quantity,
+          returnedQuantity: 0,
+          pendingQuantity: quantity,
           depositAmount: selectedProductData?.depositAmount || 0,
           totalDepositValue: quantity * (selectedProductData?.depositAmount || 0),
+          refundedAmount: 0,
           expectedReturnDate: expectedReturnDate || undefined,
           notes,
+          status: "pending",
           createdBy: currentUser?.name || "System",
         })}>
           Create Transaction
@@ -498,6 +519,75 @@ export default function EmptyCasesPage() {
 
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  
+  // State declarations - MUST be before any useEffect that uses them
+  const [query, setQuery] = useState("")
+  const [statusFilter, setStatusFilter] = useState<EmptyCaseStatus | "all">("all")
+  const [transactionTypeFilter, setTransactionTypeFilter] = useState<TransactionType | "all">("all")
+  const [activeTab, setActiveTab] = useState("transactions")
+  
+  // Audit Log States
+  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([])
+  const [isLoadingAuditLogs, setIsLoadingAuditLogs] = useState(false)
+  
+  // Dialog states
+  const [addTransactionOpen, setAddTransactionOpen] = useState(false)
+  const [supplierReturnOpen, setSupplierReturnOpen] = useState(false)
+  const [damagedCaseOpen, setDamagedCaseOpen] = useState(false)
+  const [processReturnOpen, setProcessReturnOpen] = useState(false)
+  const [selectedTransaction, setSelectedTransaction] = useState<EmptyCaseTransaction | null>(null)
+
+  // Function to fetch audit logs from API
+  const fetchAuditLogs = async () => {
+    setIsLoadingAuditLogs(true)
+    try {
+      const data = await transactionAuditsService.getAll()
+      setAuditLogs(data)
+    } catch (error) {
+      console.error('Failed to load audit logs:', error)
+      toast.error('Failed to load audit logs')
+    } finally {
+      setIsLoadingAuditLogs(false)
+    }
+  }
+
+  // Helper function to format state changes
+  const formatStateChange = (prev: any, next: any) => {
+    const changes = []
+    for (const key in next) {
+      if (prev[key] !== next[key]) {
+        changes.push(`${key}: ${prev[key]} → ${next[key]}`)
+      }
+    }
+    return changes.join(', ')
+  }
+
+  // Helper function to get action color
+  const getActionBadge = (action: string) => {
+    const actionConfig: Record<string, { label: string; className: string }> = {
+      created: { 
+        label: 'Created', 
+        className: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' 
+      },
+      updated: { 
+        label: 'Updated', 
+        className: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400' 
+      },
+      deleted: { 
+        label: 'Deleted', 
+        className: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400' 
+      },
+      processed: { 
+        label: 'Processed', 
+        className: 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400' 
+      },
+    }
+    const config = actionConfig[action] || {
+      label: action,
+      className: 'bg-gray-100 text-gray-800 dark:bg-gray-800/50 dark:text-gray-400'
+    }
+    return <Badge className={config.className}>{config.label}</Badge>
+  }
 
   // ✅ FIX: Store the function in a ref so it's never a useEffect dependency
   const checkNotificationsRef = useRef(checkAndGenerateNotifications)
@@ -527,23 +617,39 @@ export default function EmptyCasesPage() {
     checkNotificationsRef.current?.()
   }, [setEmptyCaseTransactions]) // ✅ Only depends on setEmptyCaseTransactions
 
+  // ✅ Load audit logs when active tab changes to audit - MUST be after activeTab is declared
+  useEffect(() => {
+    if (activeTab === 'audit') {
+      fetchAuditLogs()
+    }
+  }, [activeTab]) // ✅ Now activeTab is properly declared
+
   // ✅ Override addEmptyCaseTransaction to use API
   const handleAddTransaction = async (data: any) => {
     setIsLoading(true)
+
     try {
-      const newTransaction = await emptyCaseTransactionsService.create({
+      const payload: Omit<EmptyCaseTransaction, 'id' | 'createdAt'> = {
         productId: data.productId,
+        productName: data.productName || "",
         customerId: data.customerId,
         customerName: data.customerName,
         transactionType: data.transactionType,
         totalQuantity: data.totalQuantity,
+        returnedQuantity: data.returnedQuantity ?? 0,
+        pendingQuantity: data.pendingQuantity ?? data.totalQuantity,
         depositAmount: data.depositAmount,
+        totalDepositValue: data.totalDepositValue ?? (data.totalQuantity * data.depositAmount),
+        refundedAmount: data.refundedAmount ?? 0,
         expectedReturnDate: data.expectedReturnDate,
         notes: data.notes,
+        status: data.status || "pending",
         createdBy: data.createdBy,
-      })
-      
-      // Update local store
+        updatedAt: new Date().toISOString(),
+      }
+
+      const newTransaction = await emptyCaseTransactionsService.create(payload)
+
       addEmptyCaseTransaction(newTransaction)
       toast.success('Transaction created successfully')
       return newTransaction
@@ -564,9 +670,6 @@ export default function EmptyCasesPage() {
         returnQuantity,
         processedBy: currentUser?.name || 'System',
       })
-      
-      // Update local store
-      processEmptyCaseReturn(transactionId, returnQuantity, currentUser?.name || 'System')
       toast.success(`Processed ${returnQuantity} case return(s)`)
       return updatedTransaction
     } catch (err) {
@@ -577,18 +680,6 @@ export default function EmptyCasesPage() {
       setIsLoading(false)
     }
   }
-
-  const [query, setQuery] = useState("")
-  const [statusFilter, setStatusFilter] = useState<EmptyCaseStatus | "all">("all")
-  const [transactionTypeFilter, setTransactionTypeFilter] = useState<TransactionType | "all">("all")
-  const [activeTab, setActiveTab] = useState("transactions")
-  
-  // Dialog states
-  const [addTransactionOpen, setAddTransactionOpen] = useState(false)
-  const [supplierReturnOpen, setSupplierReturnOpen] = useState(false)
-  const [damagedCaseOpen, setDamagedCaseOpen] = useState(false)
-  const [processReturnOpen, setProcessReturnOpen] = useState(false)
-  const [selectedTransaction, setSelectedTransaction] = useState<EmptyCaseTransaction | null>(null)
 
   // Filter transactions
   const filteredTransactions = useMemo(() => {
@@ -630,7 +721,7 @@ export default function EmptyCasesPage() {
 
   // Status badge helper with dark mode support
   const getStatusBadge = (status: EmptyCaseStatus) => {
-    const statusConfig = {
+    const statusConfig: Record<EmptyCaseStatus, { label: string; className: string }> = {
       pending: { 
         label: "Pending", 
         className: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400" 
@@ -1362,9 +1453,115 @@ export default function EmptyCasesPage() {
 
           {/* Audit Log Tab */}
           <TabsContent value="audit" className="space-y-4">
-            <Card className="p-4">
-              <p className="text-sm text-muted-foreground">Audit log functionality - Track all transaction changes</p>
-            </Card>
+            <div className="flex justify-between items-center">
+              <div>
+                <h3 className="text-lg font-semibold flex items-center gap-2">
+                  <FileText className="size-5" />
+                  Audit Log
+                </h3>
+                <p className="text-sm text-muted-foreground">
+                  Track all changes made to empty case transactions
+                </p>
+              </div>
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={fetchAuditLogs}
+                disabled={isLoadingAuditLogs}
+              >
+                <RefreshCw className={`size-4 mr-2 ${isLoadingAuditLogs ? 'animate-spin' : ''}`} />
+                Refresh
+              </Button>
+            </div>
+            
+            {isLoadingAuditLogs ? (
+              <Card className="p-8">
+                <div className="flex items-center justify-center">
+                  <div className="text-center">
+                    <RefreshCw className="mx-auto size-8 animate-spin text-muted-foreground" />
+                    <p className="mt-2 text-sm text-muted-foreground">Loading audit logs...</p>
+                  </div>
+                </div>
+              </Card>
+            ) : (
+              <Card className="overflow-hidden p-0">
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="border-b dark:border-gray-800">
+                        <TableHead className="w-[180px]">Date & Time</TableHead>
+                        <TableHead className="w-[120px]">Transaction</TableHead>
+                        <TableHead className="w-[100px]">Action</TableHead>
+                        <TableHead>Changes</TableHead>
+                        <TableHead className="w-[150px]">Performed By</TableHead>
+                        <TableHead className="w-[200px]">Notes</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {auditLogs.map((log) => {
+                        const changes = formatStateChange(log.previousState, log.newState)
+                        
+                        return (
+                          <TableRow key={log.id} className="hover:bg-muted/50 dark:hover:bg-muted/20">
+                            <TableCell className="whitespace-nowrap text-sm">
+                              <div className="font-medium">{formatDate(log.performedAt)}</div>
+                              <div className="text-xs text-muted-foreground">
+                                {new Date(log.performedAt).toLocaleTimeString('en-US', {
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                  second: '2-digit'
+                                })}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex flex-col gap-1">
+                                <span className="font-medium text-sm">#{log.transactionId}</span>
+                                <Badge variant="outline" className="w-fit text-xs dark:border-gray-700">
+                                  {log.transactionType}
+                                </Badge>
+                              </div>
+                            </TableCell>
+                            <TableCell>{getActionBadge(log.action)}</TableCell>
+                            <TableCell>
+                              <div className="text-sm space-y-1">
+                                {changes ? (
+                                  changes.split(', ').map((change, idx) => (
+                                    <div key={idx} className="font-mono text-xs bg-muted/50 dark:bg-muted/20 px-2 py-0.5 rounded">
+                                      {change}
+                                    </div>
+                                  ))
+                                ) : (
+                                  <span className="text-muted-foreground text-xs">No changes recorded</span>
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-sm font-medium">{log.performedBy}</TableCell>
+                            <TableCell className="text-sm text-muted-foreground max-w-[200px]">
+                              {log.notes ? (
+                                <div className="truncate" title={log.notes}>
+                                  {log.notes}
+                                </div>
+                              ) : (
+                                <span className="text-xs">-</span>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        )
+                      })}
+                      {auditLogs.length === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={6} className="py-12 text-center">
+                            <FileText className="mx-auto size-8 text-muted-foreground" />
+                            <p className="mt-2 text-sm text-muted-foreground">No audit log entries found</p>
+                            <p className="text-xs text-muted-foreground">Audit entries will appear when transactions are created or updated</p>
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              </Card>
+            )}
           </TabsContent>
         </Tabs>
       </div>

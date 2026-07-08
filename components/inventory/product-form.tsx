@@ -33,7 +33,14 @@ import {
   ClipboardList,
   Box,
   Ruler,
-  Pencil
+  Pencil,
+  Truck,
+  Receipt,
+  CreditCard,
+  PackageCheck,
+  PackageX,
+  Clock,
+  Send
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Card } from "@/components/ui/card"
@@ -108,6 +115,16 @@ export interface PartialCase {
   bottleType?: "small" | "grand"
 }
 
+export interface PaymentRecord {
+  id: string
+  amount: number
+  casesPaid: number
+  paymentDate: Date
+  paymentMethod: "cash" | "bank_transfer" | "mobile_money" | "check"
+  reference?: string
+  notes?: string
+}
+
 export type ProductFormValues = Omit<Product, "id" | "createdAt" | "updatedAt"> & {
   bottleInfo?: BottleInfo
   partialCases?: PartialCase[]
@@ -118,6 +135,14 @@ export type ProductFormValues = Omit<Product, "id" | "createdAt" | "updatedAt"> 
   bottleType?: "small" | "grand"
   purchasePricePerContainer?: number 
   sellingPricePerContainer?: number
+  // Supplier delivery tracking
+  supplierSent?: number  // Total cases supplier sent/committed
+  receivedCases?: number  // Cases already received
+  remainingToReceive?: number // Cases still to receive (supplierSent - received)
+  payments?: PaymentRecord[]
+  totalPaid?: number
+  balanceDue?: number
+  
 }
 
 // Helper function to clean number input
@@ -167,7 +192,7 @@ function formatCurrency(amount: number): string {
 const STEPS = [
   { id: 'basic', label: 'Basic Info', icon: Package },
   { id: 'stock', label: 'Stock Details', icon: Box },
-  { id: 'pricing', label: 'Pricing', icon: DollarSign },
+  { id: 'pricing', label: 'Pricing & Payment', icon: DollarSign },
   { id: 'tracking', label: 'Tracking', icon: ClipboardList },
 ]
 
@@ -185,10 +210,18 @@ export function ProductForm({
   const [currentStep, setCurrentStep] = useState(0)
   const [showBottleTracking, setShowBottleTracking] = useState(false)
   const [showPartialCases, setShowPartialCases] = useState(false)
+  const [showPayments, setShowPayments] = useState(false)
   const [newPartialCaseBottles, setNewPartialCaseBottles] = useState(12)
   const [newPartialCaseReason, setNewPartialCaseReason] = useState<PartialCase["reason"]>("sold_individual")
   const [newPartialCaseNotes, setNewPartialCaseNotes] = useState("")
   const [selectedBottleType, setSelectedBottleType] = useState<"small" | "grand">("grand")
+  
+  // Payment state
+  const [paymentAmount, setPaymentAmount] = useState<number>(0)
+  const [paymentCases, setPaymentCases] = useState<number>(0)
+  const [paymentMethod, setPaymentMethod] = useState<PaymentRecord["paymentMethod"]>("cash")
+  const [paymentReference, setPaymentReference] = useState("")
+  const [paymentNotes, setPaymentNotes] = useState("")
   
   const isInitialized = useRef(false)
   
@@ -225,11 +258,21 @@ export function ProductForm({
     bottlesPerContainer: (initial as any)?.bottlesPerContainer ?? initialConfig.defaultBottlesPerContainer,
     containerSizeLabel: (initial as any)?.containerSizeLabel ?? "Grand",
     bottleType: (initial as any)?.bottleType ?? "grand",
+    // Supplier delivery tracking
+    supplierSent: (initial as any)?.supplierSent ?? 0,
+    receivedCases: (initial as any)?.receivedCases ?? 0,
+    remainingToReceive: (initial as any)?.remainingToReceive ?? 0,
+    payments: (initial as any)?.payments ?? [],
+    totalPaid: (initial as any)?.totalPaid ?? 0,
+    balanceDue: (initial as any)?.balanceDue ?? 0,
   }))
 
   // Get current container configuration based on category
   const containerConfig = getContainerConfig(v.category)
   const BOTTLES_PER_CONTAINER = v.bottlesPerContainer ?? 24
+
+  const supplierSent = v.supplierSent ?? 0
+  const receivedCases = v.receivedCases ?? 0
 
   // Calculate derived values
   const totalFromFullContainers = v.fullCases * BOTTLES_PER_CONTAINER
@@ -252,10 +295,57 @@ export function ProductForm({
     ? ((sellingPricePerContainer - purchasePricePerContainer) / purchasePricePerContainer) * 100
     : 0
 
+  // Calculate payment totals
+  const totalPaid = (v.payments || []).reduce((sum, p) => sum + p.amount, 0)
+  const totalCasesPaid = (v.payments || []).reduce((sum, p) => sum + p.casesPaid, 0)
+  const balanceDue = receivedCases > 0 
+    ? (receivedCases * purchasePricePerContainer) - totalPaid
+    : 0
+
+  // Calculate remaining to receive
+  const remainingToReceive = Math.max(0, supplierSent - receivedCases)
+
   useEffect(() => {
     if (hasIssues) setShowBottleTracking(true)
     if (hasPartialCases) setShowPartialCases(true)
-  }, [hasIssues, hasPartialCases])
+    if ((v.payments || []).length > 0) setShowPayments(true)
+  }, [hasIssues, hasPartialCases, v.payments])
+
+  // CRITICAL LOGIC: Update remaining to receive whenever supplierSent or received changes
+  useEffect(() => {
+    const newRemaining = Math.max(0, (v.supplierSent || 0) - (v.receivedCases || 0))
+    setV(prev => ({
+      ...prev,
+      remainingToReceive: newRemaining
+    }))
+  }, [v.supplierSent, v.receivedCases])
+
+  // When received cases changes, update remaining to receive
+  const handleReceivedCasesChange = (value: number) => {
+    const newReceived = Math.max(0, value)
+    setV(prev => {
+      const newRemaining = Math.max(0, (prev.supplierSent || 0) - newReceived)
+      return {
+        ...prev,
+        receivedCases: newReceived,
+        remainingToReceive: newRemaining,
+        fullCases: newReceived // Received cases become your stock
+      }
+    })
+  }
+
+  // When supplier sent changes, update remaining to receive
+  const handleSupplierSentChange = (value: number) => {
+    const newSent = Math.max(0, value)
+    setV(prev => {
+      const newRemaining = Math.max(0, newSent - (prev.receivedCases || 0))
+      return {
+        ...prev,
+        supplierSent: newSent,
+        remainingToReceive: newRemaining
+      }
+    })
+  }
 
   // Handle category change
   useEffect(() => {
@@ -333,17 +423,17 @@ export function ProductForm({
       bottleType: v.bottleType,
     }
 
-    // CRITICAL FIX: Properly update the partialCases array
     setV(prev => {
       const updatedPartialCases = [...(prev.partialCases || []), newPartialCase]
+      const newFullCases = Math.max(0, prev.fullCases - 1)
+      
       return {
         ...prev,
         partialCases: updatedPartialCases,
-        fullCases: prev.fullCases - 1,
+        fullCases: newFullCases,
       }
     })
 
-    // Reset form fields
     setNewPartialCaseBottles(Math.floor(BOTTLES_PER_CONTAINER / 2))
     setNewPartialCaseReason("sold_individual")
     setNewPartialCaseNotes("")
@@ -357,10 +447,18 @@ export function ProductForm({
   }
 
   function removePartialCase(id: string) {
-    setV(prev => ({
-      ...prev,
-      partialCases: (prev.partialCases || []).filter(pc => pc.id !== id),
-    }))
+    setV(prev => {
+      const removedCase = (prev.partialCases || []).find(pc => pc.id === id)
+      if (!removedCase) return prev
+      
+      const newFullCases = prev.fullCases + 1
+      
+      return {
+        ...prev,
+        partialCases: (prev.partialCases || []).filter(pc => pc.id !== id),
+        fullCases: newFullCases,
+      }
+    })
     toast.info("Partial container removed")
   }
 
@@ -372,6 +470,73 @@ export function ProductForm({
         pc.id === id ? { ...pc, bottleCount: newBottleCount } : pc
       ),
     }))
+  }
+
+  // Payment functions
+  function addPayment() {
+    if (paymentAmount <= 0) {
+      toast.error("Payment amount must be greater than 0")
+      return
+    }
+
+    if (paymentCases <= 0 || paymentCases > (v.receivedCases || 0)) {
+      toast.error(`Payment must be for 1 to ${v.receivedCases || 0} cases`)
+      return
+    }
+
+    const totalDue = (v.receivedCases || 0) * purchasePricePerContainer
+    const newTotalPaid = totalPaid + paymentAmount
+    
+    if (newTotalPaid > totalDue) {
+      toast.error(`Payment exceeds total due of ${formatCurrency(totalDue)}`)
+      return
+    }
+
+    const newPayment: PaymentRecord = {
+      id: Date.now().toString(),
+      amount: paymentAmount,
+      casesPaid: paymentCases,
+      paymentDate: new Date(),
+      paymentMethod: paymentMethod,
+      reference: paymentReference || undefined,
+      notes: paymentNotes || undefined,
+    }
+
+    setV(prev => ({
+      ...prev,
+      payments: [...(prev.payments || []), newPayment],
+      totalPaid: totalPaid + paymentAmount,
+      balanceDue: totalDue - (totalPaid + paymentAmount),
+    }))
+
+    // Reset payment form
+    setPaymentAmount(0)
+    setPaymentCases(0)
+    setPaymentMethod("cash")
+    setPaymentReference("")
+    setPaymentNotes("")
+    
+    toast.success(`Payment of ${formatCurrency(paymentAmount)} recorded for ${paymentCases} cases`)
+  }
+
+  function removePayment(id: string) {
+    const paymentToRemove = (v.payments || []).find(p => p.id === id)
+    if (!paymentToRemove) return
+
+    setV(prev => {
+      const updatedPayments = (prev.payments || []).filter(p => p.id !== id)
+      const newTotalPaid = updatedPayments.reduce((sum, p) => sum + p.amount, 0)
+      const totalDue = (prev.receivedCases || 0) * (prev.purchasePricePerContainer || 0)
+      
+      return {
+        ...prev,
+        payments: updatedPayments,
+        totalPaid: newTotalPaid,
+        balanceDue: totalDue - newTotalPaid,
+      }
+    })
+    
+    toast.info("Payment record removed")
   }
 
   function validateForm(): boolean {
@@ -398,6 +563,26 @@ export function ProductForm({
     }
     if (missingBottles < 0 || damagedBottles < 0 || returnedBottles < 0) {
       newErrors.bottles = "Bottle counts cannot be negative"
+    }
+
+    // Validate supplier delivery fields
+    if ((v.supplierSent || 0) < 0) {
+      newErrors.supplierSent = "Supplier sent cases cannot be negative"
+    }
+    
+    if ((v.receivedCases || 0) < 0) {
+      newErrors.receivedCases = "Received cases cannot be negative"
+    }
+    
+    if (receivedCases > supplierSent) {
+      newErrors.receivedCases = `Received cases (${receivedCases}) cannot exceed supplier sent (${supplierSent})`
+    }
+
+    // Validate payment balance
+    const totalDue = (v.receivedCases || 0) * (v.purchasePricePerContainer || 0)
+    const paymentsTotal = (v.payments || []).reduce((sum, p) => sum + p.amount, 0)
+    if (paymentsTotal > totalDue && totalDue > 0) {
+      newErrors.payments = `Total payments (${formatCurrency(paymentsTotal)}) exceed total due (${formatCurrency(totalDue)})`
     }
 
     const dateError = validateDates(v.manufactureDate, v.expiryDate)
@@ -427,6 +612,9 @@ export function ProductForm({
       notes: "",
     }
 
+    // Calculate payment totals
+    const paymentsTotal = (v.payments || []).reduce((sum, p) => sum + p.amount, 0)
+
     // Create complete product data with ALL fields
     const productData: ProductFormValues = {
       // Basic Information
@@ -453,10 +641,18 @@ export function ProductForm({
       purchasePrice: purchasePricePerBottle,
       sellingPrice: sellingPricePerBottle,
       
-      // CRITICAL FIX: Ensure bottleInfo and partialCases are properly included
+      // Bottle and Case Tracking
       bottleInfo: bottleInfo,
       partialCases: v.partialCases || [],
       lastStockCheck: new Date(),
+      
+      // Supplier Delivery Tracking
+      supplierSent: v.supplierSent || 0,
+      receivedCases: v.receivedCases || 0,
+      remainingToReceive: v.remainingToReceive || 0,
+      payments: v.payments || [],
+      totalPaid: paymentsTotal,
+      balanceDue: ((v.receivedCases || 0) * (v.purchasePricePerContainer || 0)) - paymentsTotal,
       
       // Dates
       manufactureDate: new Date(v.manufactureDate).toISOString(),
@@ -464,10 +660,14 @@ export function ProductForm({
       batchNumber: v.batchNumber,
     }
 
-    console.log('Submitting product data with bottleInfo and partialCases:', {
-      bottleInfo: productData.bottleInfo,
-      partialCases: productData.partialCases,
-      fullData: productData
+    console.log('Submitting product data:', {
+      supplierSent: productData.supplierSent,
+      receivedCases: productData.receivedCases,
+      remainingToReceive: productData.remainingToReceive,
+      fullCases: productData.fullCases,
+      payments: productData.payments,
+      totalPaid: productData.totalPaid,
+      balanceDue: productData.balanceDue,
     })
     
     onSubmit(productData)
@@ -488,6 +688,16 @@ export function ProductForm({
       case "Beer": return <Beer className="size-4" />
       case "Wine": return <Wine className="size-4" />
       default: return <Package className="size-4" />
+    }
+  }
+
+  const getPaymentMethodLabel = (method: string) => {
+    switch (method) {
+      case "cash": return "Cash"
+      case "bank_transfer": return "Bank Transfer"
+      case "mobile_money": return "Mobile Money"
+      case "check": return "Check"
+      default: return method
     }
   }
 
@@ -726,10 +936,130 @@ export function ProductForm({
         </div>
       </div>
 
+      {/* Supplier Delivery Tracking */}
+      <Card className="p-4 border-blue-200 bg-blue-50 dark:bg-blue-950/20">
+        <div className="flex items-center gap-2 mb-4">
+          <Send className="size-4 text-blue-600" />
+          <span className="font-medium text-blue-900 dark:text-blue-100">Supplier Delivery Tracking</span>
+        </div>
+        
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          {/* Supplier Sent - What supplier committed to send */}
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="supplierSent" className="text-sm font-medium flex items-center gap-1">
+              <PackageCheck className="size-4 text-blue-600" />
+              full case request
+            </Label>
+            <Input
+              id="supplierSent"
+              type="text"
+              inputMode="numeric"
+              autoComplete="off"
+              placeholder="0"
+              value={v.supplierSent === 0 ? '' : v.supplierSent}
+              onChange={(e) => {
+                const cleaned = cleanNumberInput(e.target.value)
+                const num = parseInt(cleaned)
+                if (!isNaN(num)) {
+                  handleSupplierSentChange(num)
+                } else {
+                  handleSupplierSentChange(0)
+                }
+              }}
+              className={cn(errors.supplierSent && "border-destructive")}
+            />
+            {errors.supplierSent && <p className="text-xs text-destructive">{errors.supplierSent}</p>}
+            <p className="text-xs text-muted-foreground">
+              What supplier sent/committed to send
+            </p>
+          </div>
+          
+          {/* Received Cases - What you've received */}
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="receivedCases" className="text-sm font-medium flex items-center gap-1">
+              <Package className="size-4 text-green-600" />
+              Received Cases
+            </Label>
+            <Input
+              id="receivedCases"
+              type="text"
+              inputMode="numeric"
+              autoComplete="off"
+              placeholder="0"
+              value={v.receivedCases === 0 ? '' : v.receivedCases}
+              onChange={(e) => {
+                const cleaned = cleanNumberInput(e.target.value)
+                const num = parseInt(cleaned)
+                if (!isNaN(num)) {
+                  handleReceivedCasesChange(num)
+                } else {
+                  handleReceivedCasesChange(0)
+                }
+              }}
+              className={cn(errors.receivedCases && "border-destructive")}
+            />
+            {errors.receivedCases && <p className="text-xs text-destructive">{errors.receivedCases}</p>}
+            <p className="text-xs text-muted-foreground">
+              Cases you've received so far
+            </p>
+          </div>
+          
+          {/* Remaining to Receive - Auto-calculated */}
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="remainingToReceive" className="text-sm font-medium flex items-center gap-1">
+              <Clock className="size-4 text-orange-500" />
+              Remaining to Receive
+            </Label>
+            <Input
+              id="remainingToReceive"
+              type="text"
+              inputMode="numeric"
+              autoComplete="off"
+              placeholder="0"
+              value={remainingToReceive === 0 ? '' : remainingToReceive}
+              readOnly
+              className="bg-muted/50"
+            />
+            <p className="text-xs text-muted-foreground">
+              {remainingToReceive > 0 
+                ? `⚠️ ${remainingToReceive} cases still to receive`
+                : '✓ All cases received'}
+            </p>
+          </div>
+        </div>
+
+        {/* Summary Cards */}
+        <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
+          <div className="rounded-lg bg-blue-100/50 dark:bg-blue-900/30 p-3">
+            <div className="text-xs text-muted-foreground">Supplier Sent</div>
+            <div className="font-semibold">{supplierSent} cases</div>
+          </div>
+          <div className="rounded-lg bg-green-100/50 dark:bg-green-900/30 p-3">
+            <div className="text-xs text-muted-foreground">Received</div>
+            <div className="font-semibold text-green-600">{receivedCases} cases</div>
+            <div className="text-xs text-muted-foreground mt-1">
+              {supplierSent > 0 
+                ? `${Math.round((receivedCases / supplierSent) * 100)}% received`
+                : '0%'}
+            </div>
+          </div>
+          <div className="rounded-lg bg-orange-100/50 dark:bg-orange-900/30 p-3">
+            <div className="text-xs text-muted-foreground">Still to Receive</div>
+            <div className="font-semibold text-orange-600">{remainingToReceive} cases</div>
+            <div className="text-xs text-muted-foreground mt-1">
+              {supplierSent > 0 
+                ? `${Math.round((remainingToReceive / supplierSent) * 100)}% pending`
+                : '0%'}
+            </div>
+          </div>
+        </div>
+      </Card>
+
+      {/* Full Cases - Your current stock (Received cases) */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div className="flex flex-col gap-2">
           <Label htmlFor="full" className="text-sm font-medium">
-            Full {containerConfig.containerLabel}s <span className="text-destructive">*</span>
+            Full {containerConfig.containerLabel}s (In Stock) <span className="text-destructive">*</span>
           </Label>
           <Input
             id="full"
@@ -743,7 +1073,10 @@ export function ProductForm({
           />
           {errors.fullCases && <p className="text-xs text-destructive">{errors.fullCases}</p>}
           <p className="text-xs text-muted-foreground">
-            {totalFromFullContainers} bottles total
+            {totalFromFullContainers} bottles total in stock
+          </p>
+          <p className="text-xs text-blue-600">
+            ℹ️ This is the stock you currently have (received from supplier)
           </p>
         </div>
         
@@ -889,6 +1222,7 @@ export function ProductForm({
                 size="sm"
                 onClick={addPartialCase}
                 className="mt-3"
+                disabled={v.fullCases === 0}
               >
                 <Plus className="size-4 mr-1" />
                 Open {containerConfig.containerLabel}
@@ -1033,6 +1367,9 @@ export function ProductForm({
           {errors.purchasePricePerContainer && (
             <p className="text-xs text-destructive">{errors.purchasePricePerContainer}</p>
           )}
+          <p className="text-xs text-muted-foreground">
+            Total purchase: {formatCurrency((v.receivedCases || 0) * (v.purchasePricePerContainer || 0))}
+          </p>
         </div>
         
         <div className="flex flex-col gap-2">
@@ -1076,6 +1413,169 @@ export function ProductForm({
             Per {containerConfig.containerLabel.toLowerCase()}
           </p>
         </div>
+      </div>
+
+      {/* Payments Section */}
+      <div>
+        <button
+          type="button"
+          onClick={() => setShowPayments(!showPayments)}
+          className="flex items-center gap-2 text-sm font-medium text-primary hover:underline"
+        >
+          <Receipt className="size-4" />
+          {showPayments ? "Hide payment records" : "Manage payments"}
+          {(v.payments || []).length > 0 && (
+            <Badge variant="secondary" className="ml-auto">
+              {(v.payments || []).length} payments
+            </Badge>
+          )}
+        </button>
+
+        {showPayments && (
+          <Card className="mt-3 p-4 space-y-4">
+            {/* Payment Summary */}
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <div>
+                <div className="text-xs text-muted-foreground">Total Due</div>
+                <div className="font-semibold">
+                  {formatCurrency((v.receivedCases || 0) * (v.purchasePricePerContainer || 0))}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground">Total Paid</div>
+                <div className="font-semibold text-green-600">
+                  {formatCurrency(totalPaid)}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground">Balance Due</div>
+                <div className={cn("font-semibold", balanceDue > 0 ? "text-orange-500" : "text-green-600")}>
+                  {formatCurrency(balanceDue)}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground">Cases Paid</div>
+                <div className="font-semibold">{totalCasesPaid}</div>
+              </div>
+            </div>
+
+            {/* Payment History */}
+            {(v.payments || []).length > 0 && (
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Payment History</Label>
+                {(v.payments || []).map(p => (
+                  <div key={p.id} className="flex items-center justify-between rounded-lg border p-3">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline">{formatCurrency(p.amount)}</Badge>
+                        <Badge variant="secondary" className="text-xs">
+                          {p.casesPaid} cases
+                        </Badge>
+                        <Badge variant="secondary" className="text-xs">
+                          {getPaymentMethodLabel(p.paymentMethod)}
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {new Date(p.paymentDate).toLocaleDateString()}
+                        {p.reference && ` • Ref: ${p.reference}`}
+                        {p.notes && ` • ${p.notes}`}
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="size-8 text-destructive"
+                      onClick={() => removePayment(p.id)}
+                    >
+                      <Trash2 className="size-4" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Add Payment */}
+            <div className="border-t pt-4">
+              <Label className="text-sm font-medium">Record Payment</Label>
+              <div className="mt-2 grid gap-3 sm:grid-cols-4">
+                <div>
+                  <Input
+                    type="text"
+                    inputMode="decimal"
+                    placeholder="Amount"
+                    value={paymentAmount === 0 ? '' : paymentAmount}
+                    onChange={(e) => {
+                      const cleaned = cleanNumberInput(e.target.value)
+                      const num = parseFloat(cleaned)
+                      setPaymentAmount(isNaN(num) ? 0 : num)
+                    }}
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">Payment amount</p>
+                </div>
+                <div>
+                  <Input
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="Cases"
+                    value={paymentCases === 0 ? '' : paymentCases}
+                    onChange={(e) => {
+                      const cleaned = cleanNumberInput(e.target.value)
+                      const num = parseInt(cleaned)
+                      setPaymentCases(isNaN(num) ? 0 : num)
+                    }}
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">Cases being paid for</p>
+                </div>
+                <div>
+                  <Select value={paymentMethod} onValueChange={(v: any) => setPaymentMethod(v)}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="cash">Cash</SelectItem>
+                      <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
+                      <SelectItem value="mobile_money">Mobile Money</SelectItem>
+                      <SelectItem value="check">Check</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground mt-1">Payment method</p>
+                </div>
+                <div>
+                  <Input
+                    placeholder="Reference"
+                    autoComplete="off"
+                    value={paymentReference}
+                    onChange={(e) => setPaymentReference(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">Reference (optional)</p>
+                </div>
+              </div>
+              <div className="mt-2">
+                <Input
+                  placeholder="Payment notes (optional)"
+                  autoComplete="off"
+                  value={paymentNotes}
+                  onChange={(e) => setPaymentNotes(e.target.value)}
+                />
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={addPayment}
+                className="mt-3"
+                disabled={paymentAmount <= 0 || paymentCases <= 0}
+              >
+                <CreditCard className="size-4 mr-1" />
+                Record Payment
+              </Button>
+              {errors.payments && (
+                <p className="text-xs text-destructive mt-2">{errors.payments}</p>
+              )}
+            </div>
+          </Card>
+        )}
       </div>
 
       {(v.sellingPricePerContainer ?? 0) > 0 && (v.purchasePricePerContainer ?? 0) > 0 && (
