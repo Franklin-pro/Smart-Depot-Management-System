@@ -136,12 +136,13 @@ export type ProductFormValues = Omit<Product, "id" | "createdAt" | "updatedAt"> 
   purchasePricePerContainer?: number 
   sellingPricePerContainer?: number
   // Supplier delivery tracking
-  supplierSent?: number  // Total cases supplier sent/committed
+  supplierSent?: number  // Total cases YOU requested/ordered from the supplier
   receivedCases?: number  // Cases already received
-  remainingToReceive?: number // Cases still to receive (supplierSent - received)
+  remainingToReceive?: number // Cases still owed to you by the supplier (supplierSent - received)
+  supplierDebtValue?: number // Monetary value of the cases the supplier still owes you
   payments?: PaymentRecord[]
   totalPaid?: number
-  balanceDue?: number
+  balanceDue?: number // Amount YOU still owe the supplier for cases already received
   
 }
 
@@ -298,12 +299,23 @@ export function ProductForm({
   // Calculate payment totals
   const totalPaid = (v.payments || []).reduce((sum, p) => sum + p.amount, 0)
   const totalCasesPaid = (v.payments || []).reduce((sum, p) => sum + p.casesPaid, 0)
-  const balanceDue = receivedCases > 0 
-    ? (receivedCases * purchasePricePerContainer) - totalPaid
-    : 0
+  // Value of the FULL order you requested — you can pay against this even before cases arrive
+  // (e.g. you request 100 cases and pay for all 100 upfront, before supplier delivers any)
+  const totalDueForOrder = supplierSent * purchasePricePerContainer
+  // YOUR debt (money) only exists when what you've paid is LESS than the value of what you requested.
+  // If you've paid the same or more, you owe nothing (clamped at 0, never negative).
+  const isFullyPaid = totalDueForOrder > 0 && totalPaid >= totalDueForOrder
+  const balanceDue = Math.max(0, totalDueForOrder - totalPaid)
+  const unpaidCases = Math.max(0, supplierSent - totalCasesPaid)
 
-  // Calculate remaining to receive
+  // Cases the supplier still owes you (requested but not yet delivered) — independent of payment status.
+  // This is what matters once you've paid: it tells you how many cases they still need to send you.
   const remainingToReceive = Math.max(0, supplierSent - receivedCases)
+  const isFullyDelivered = supplierSent > 0 && remainingToReceive === 0
+  // Monetary value of what the supplier still owes you in goods
+  const supplierDebtValue = remainingToReceive * purchasePricePerContainer
+  // Total value of the order you requested (useful to know how much you'll owe in total once fully delivered)
+  const totalOrderValue = supplierSent * purchasePricePerContainer
 
   useEffect(() => {
     if (hasIssues) setShowBottleTracking(true)
@@ -334,7 +346,7 @@ export function ProductForm({
     })
   }
 
-  // When supplier sent changes, update remaining to receive
+  // When the number of cases you requested changes, update remaining to receive
   const handleSupplierSentChange = (value: number) => {
     const newSent = Math.max(0, value)
     setV(prev => {
@@ -472,6 +484,34 @@ export function ProductForm({
     }))
   }
 
+  // Auto-calculate how many cases a given payment amount covers, based on price per container
+  function calculateCasesForAmount(amount: number): number {
+    if (purchasePricePerContainer <= 0) return 0
+    const maxCases = Math.max(0, supplierSent - totalCasesPaid)
+    const cases = Math.round(amount / purchasePricePerContainer)
+    return Math.min(Math.max(0, cases), maxCases)
+  }
+
+  // When the person types an amount, default the cases field to match — they can still edit it after
+  function handlePaymentAmountChange(amount: number) {
+    setPaymentAmount(amount)
+    setPaymentCases(calculateCasesForAmount(amount))
+  }
+
+  // When the person types cases directly, fill in the matching amount so the payment isn't stuck at 0
+  function handlePaymentCasesChange(cases: number) {
+    const maxCases = Math.max(0, supplierSent - totalCasesPaid)
+    const clampedCases = Math.min(Math.max(0, cases), maxCases)
+    setPaymentCases(clampedCases)
+    setPaymentAmount(Math.round(clampedCases * purchasePricePerContainer))
+  }
+
+  // Quick partial-payment buttons: 25% / 50% / 75% / 100% of the remaining balance
+  function setPaymentByPercent(percent: number) {
+    const amount = Math.round(balanceDue * percent)
+    handlePaymentAmountChange(amount)
+  }
+
   // Payment functions
   function addPayment() {
     if (paymentAmount <= 0) {
@@ -479,12 +519,12 @@ export function ProductForm({
       return
     }
 
-    if (paymentCases <= 0 || paymentCases > (v.receivedCases || 0)) {
-      toast.error(`Payment must be for 1 to ${v.receivedCases || 0} cases`)
+    if (paymentCases <= 0 || paymentCases > (v.supplierSent || 0)) {
+      toast.error(`Payment must be for 1 to ${v.supplierSent || 0} cases (cases requested)`)
       return
     }
 
-    const totalDue = (v.receivedCases || 0) * purchasePricePerContainer
+    const totalDue = (v.supplierSent || 0) * purchasePricePerContainer
     const newTotalPaid = totalPaid + paymentAmount
     
     if (newTotalPaid > totalDue) {
@@ -506,7 +546,7 @@ export function ProductForm({
       ...prev,
       payments: [...(prev.payments || []), newPayment],
       totalPaid: totalPaid + paymentAmount,
-      balanceDue: totalDue - (totalPaid + paymentAmount),
+      balanceDue: Math.max(0, totalDue - (totalPaid + paymentAmount)),
     }))
 
     // Reset payment form
@@ -519,6 +559,37 @@ export function ProductForm({
     toast.success(`Payment of ${formatCurrency(paymentAmount)} recorded for ${paymentCases} cases`)
   }
 
+  // Mark the entire requested order as paid in one action, even if not all cases have arrived yet.
+  // Records a payment for exactly the remaining balance so your debt becomes 0.
+  function markAllAsPaid() {
+    const totalDue = supplierSent * purchasePricePerContainer
+    const remainingBalance = Math.max(0, totalDue - totalPaid)
+    const remainingCases = Math.max(0, supplierSent - totalCasesPaid)
+
+    if (remainingBalance <= 0 || remainingCases <= 0) {
+      toast.info("Already fully paid — no balance remaining")
+      return
+    }
+
+    const newPayment: PaymentRecord = {
+      id: Date.now().toString(),
+      amount: remainingBalance,
+      casesPaid: remainingCases,
+      paymentDate: new Date(),
+      paymentMethod: paymentMethod,
+      notes: "Marked as fully paid",
+    }
+
+    setV(prev => ({
+      ...prev,
+      payments: [...(prev.payments || []), newPayment],
+      totalPaid: totalPaid + remainingBalance,
+      balanceDue: 0,
+    }))
+
+    toast.success(`Marked ${remainingCases} cases as paid (${formatCurrency(remainingBalance)}). Supplier still owes you ${remainingToReceive} cases if not yet delivered.`)
+  }
+
   function removePayment(id: string) {
     const paymentToRemove = (v.payments || []).find(p => p.id === id)
     if (!paymentToRemove) return
@@ -526,13 +597,13 @@ export function ProductForm({
     setV(prev => {
       const updatedPayments = (prev.payments || []).filter(p => p.id !== id)
       const newTotalPaid = updatedPayments.reduce((sum, p) => sum + p.amount, 0)
-      const totalDue = (prev.receivedCases || 0) * (prev.purchasePricePerContainer || 0)
+      const totalDue = (prev.supplierSent || 0) * (prev.purchasePricePerContainer || 0)
       
       return {
         ...prev,
         payments: updatedPayments,
         totalPaid: newTotalPaid,
-        balanceDue: totalDue - newTotalPaid,
+        balanceDue: Math.max(0, totalDue - newTotalPaid),
       }
     })
     
@@ -567,7 +638,7 @@ export function ProductForm({
 
     // Validate supplier delivery fields
     if ((v.supplierSent || 0) < 0) {
-      newErrors.supplierSent = "Supplier sent cases cannot be negative"
+      newErrors.supplierSent = "Requested cases cannot be negative"
     }
     
     if ((v.receivedCases || 0) < 0) {
@@ -575,11 +646,11 @@ export function ProductForm({
     }
     
     if (receivedCases > supplierSent) {
-      newErrors.receivedCases = `Received cases (${receivedCases}) cannot exceed supplier sent (${supplierSent})`
+      newErrors.receivedCases = `Received cases (${receivedCases}) cannot exceed requested cases (${supplierSent})`
     }
 
-    // Validate payment balance
-    const totalDue = (v.receivedCases || 0) * (v.purchasePricePerContainer || 0)
+    // Validate payment balance — payments can be made against the full requested order
+    const totalDue = (v.supplierSent || 0) * (v.purchasePricePerContainer || 0)
     const paymentsTotal = (v.payments || []).reduce((sum, p) => sum + p.amount, 0)
     if (paymentsTotal > totalDue && totalDue > 0) {
       newErrors.payments = `Total payments (${formatCurrency(paymentsTotal)}) exceed total due (${formatCurrency(totalDue)})`
@@ -614,6 +685,7 @@ export function ProductForm({
 
     // Calculate payment totals
     const paymentsTotal = (v.payments || []).reduce((sum, p) => sum + p.amount, 0)
+    const finalRemainingToReceive = Math.max(0, (v.supplierSent || 0) - (v.receivedCases || 0))
 
     // Create complete product data with ALL fields
     const productData: ProductFormValues = {
@@ -646,13 +718,14 @@ export function ProductForm({
       partialCases: v.partialCases || [],
       lastStockCheck: new Date(),
       
-      // Supplier Delivery Tracking
+      // Supplier Delivery Tracking (cases owed both directions)
       supplierSent: v.supplierSent || 0,
       receivedCases: v.receivedCases || 0,
-      remainingToReceive: v.remainingToReceive || 0,
+      remainingToReceive: finalRemainingToReceive,
+      supplierDebtValue: finalRemainingToReceive * (v.purchasePricePerContainer ?? 0),
       payments: v.payments || [],
       totalPaid: paymentsTotal,
-      balanceDue: ((v.receivedCases || 0) * (v.purchasePricePerContainer || 0)) - paymentsTotal,
+      balanceDue: Math.max(0, ((v.supplierSent || 0) * (v.purchasePricePerContainer || 0)) - paymentsTotal),
       
       // Dates
       manufactureDate: new Date(v.manufactureDate).toISOString(),
@@ -664,6 +737,7 @@ export function ProductForm({
       supplierSent: productData.supplierSent,
       receivedCases: productData.receivedCases,
       remainingToReceive: productData.remainingToReceive,
+      supplierDebtValue: productData.supplierDebtValue,
       fullCases: productData.fullCases,
       payments: productData.payments,
       totalPaid: productData.totalPaid,
@@ -944,11 +1018,11 @@ export function ProductForm({
         </div>
         
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          {/* Supplier Sent - What supplier committed to send */}
+          {/* Supplier Sent - What you requested from supplier */}
           <div className="flex flex-col gap-2">
             <Label htmlFor="supplierSent" className="text-sm font-medium flex items-center gap-1">
               <PackageCheck className="size-4 text-blue-600" />
-              full case request
+              Cases Requested
             </Label>
             <Input
               id="supplierSent"
@@ -970,7 +1044,7 @@ export function ProductForm({
             />
             {errors.supplierSent && <p className="text-xs text-destructive">{errors.supplierSent}</p>}
             <p className="text-xs text-muted-foreground">
-              What supplier sent/committed to send
+              Total cases you ordered from the supplier (e.g. 100)
             </p>
           </div>
           
@@ -1000,15 +1074,15 @@ export function ProductForm({
             />
             {errors.receivedCases && <p className="text-xs text-destructive">{errors.receivedCases}</p>}
             <p className="text-xs text-muted-foreground">
-              Cases you've received so far
+              Cases actually delivered so far (e.g. 50)
             </p>
           </div>
           
-          {/* Remaining to Receive - Auto-calculated */}
+          {/* Remaining to Receive - Auto-calculated (supplier's debt to you) */}
           <div className="flex flex-col gap-2">
             <Label htmlFor="remainingToReceive" className="text-sm font-medium flex items-center gap-1">
               <Clock className="size-4 text-orange-500" />
-              Remaining to Receive
+              Supplier Owes You
             </Label>
             <Input
               id="remainingToReceive"
@@ -1022,17 +1096,20 @@ export function ProductForm({
             />
             <p className="text-xs text-muted-foreground">
               {remainingToReceive > 0 
-                ? `⚠️ ${remainingToReceive} cases still to receive`
-                : '✓ All cases received'}
+                ? `⚠️ ${remainingToReceive} cases still owed to you (worth ${formatCurrency(supplierDebtValue)})`
+                : '✓ All requested cases delivered'}
             </p>
           </div>
         </div>
 
         {/* Summary Cards */}
-        <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
           <div className="rounded-lg bg-blue-100/50 dark:bg-blue-900/30 p-3">
-            <div className="text-xs text-muted-foreground">Supplier Sent</div>
+            <div className="text-xs text-muted-foreground">Requested</div>
             <div className="font-semibold">{supplierSent} cases</div>
+            <div className="text-xs text-muted-foreground mt-1">
+              {formatCurrency(totalOrderValue)}
+            </div>
           </div>
           <div className="rounded-lg bg-green-100/50 dark:bg-green-900/30 p-3">
             <div className="text-xs text-muted-foreground">Received</div>
@@ -1044,12 +1121,19 @@ export function ProductForm({
             </div>
           </div>
           <div className="rounded-lg bg-orange-100/50 dark:bg-orange-900/30 p-3">
-            <div className="text-xs text-muted-foreground">Still to Receive</div>
+            <div className="text-xs text-muted-foreground">Supplier Owes You</div>
             <div className="font-semibold text-orange-600">{remainingToReceive} cases</div>
             <div className="text-xs text-muted-foreground mt-1">
-              {supplierSent > 0 
-                ? `${Math.round((remainingToReceive / supplierSent) * 100)}% pending`
-                : '0%'}
+              {formatCurrency(supplierDebtValue)}
+            </div>
+          </div>
+          <div className={cn("rounded-lg p-3", balanceDue > 0 ? "bg-red-100/50 dark:bg-red-900/30" : "bg-green-100/50 dark:bg-green-900/30")}>
+            <div className="text-xs text-muted-foreground">You Owe Supplier</div>
+            <div className={cn("font-semibold", balanceDue > 0 ? "text-red-600" : "text-green-600")}>
+              {balanceDue > 0 ? formatCurrency(balanceDue) : "Paid in full"}
+            </div>
+            <div className="text-xs text-muted-foreground mt-1">
+              for {receivedCases} cases received
             </div>
           </div>
         </div>
@@ -1368,7 +1452,7 @@ export function ProductForm({
             <p className="text-xs text-destructive">{errors.purchasePricePerContainer}</p>
           )}
           <p className="text-xs text-muted-foreground">
-            Total purchase: {formatCurrency((v.receivedCases || 0) * (v.purchasePricePerContainer || 0))}
+            Total order value ({supplierSent} requested): {formatCurrency(totalOrderValue)}
           </p>
         </div>
         
@@ -1436,9 +1520,9 @@ export function ProductForm({
             {/* Payment Summary */}
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               <div>
-                <div className="text-xs text-muted-foreground">Total Due</div>
+                <div className="text-xs text-muted-foreground">Total Due ({supplierSent} requested)</div>
                 <div className="font-semibold">
-                  {formatCurrency((v.receivedCases || 0) * (v.purchasePricePerContainer || 0))}
+                  {formatCurrency(totalOrderValue)}
                 </div>
               </div>
               <div>
@@ -1450,14 +1534,23 @@ export function ProductForm({
               <div>
                 <div className="text-xs text-muted-foreground">Balance Due</div>
                 <div className={cn("font-semibold", balanceDue > 0 ? "text-orange-500" : "text-green-600")}>
-                  {formatCurrency(balanceDue)}
+                  {balanceDue > 0 ? formatCurrency(balanceDue) : "Paid in full"}
                 </div>
               </div>
               <div>
                 <div className="text-xs text-muted-foreground">Cases Paid</div>
-                <div className="font-semibold">{totalCasesPaid}</div>
+                <div className="font-semibold">{totalCasesPaid} / {supplierSent}</div>
               </div>
             </div>
+
+            {isFullyPaid && remainingToReceive > 0 && (
+              <Alert className="border-orange-200 bg-orange-50 dark:bg-orange-950/20">
+                <Clock className="size-4 text-orange-500" />
+                <AlertDescription className="text-orange-700 dark:text-orange-300">
+                  You've paid in full. Supplier still owes you {remainingToReceive} {containerConfig.containerLabel.toLowerCase()}{remainingToReceive === 1 ? "" : "s"} not yet delivered (worth {formatCurrency(supplierDebtValue)}).
+                </AlertDescription>
+              </Alert>
+            )}
 
             {/* Payment History */}
             {(v.payments || []).length > 0 && (
@@ -1498,6 +1591,27 @@ export function ProductForm({
             {/* Add Payment */}
             <div className="border-t pt-4">
               <Label className="text-sm font-medium">Record Payment</Label>
+
+              {balanceDue > 0 && (
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <span className="text-xs text-muted-foreground">Quick pay:</span>
+                  {[0.25, 0.5, 0.75, 1].map((pct) => (
+                    <Button
+                      key={pct}
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPaymentByPercent(pct)}
+                    >
+                      {pct === 1 ? "100%" : `${pct * 100}%`}
+                      <span className="ml-1 text-xs text-muted-foreground">
+                        ({formatCurrency(Math.round(balanceDue * pct))})
+                      </span>
+                    </Button>
+                  ))}
+                </div>
+              )}
+
               <div className="mt-2 grid gap-3 sm:grid-cols-4">
                 <div>
                   <Input
@@ -1508,7 +1622,7 @@ export function ProductForm({
                     onChange={(e) => {
                       const cleaned = cleanNumberInput(e.target.value)
                       const num = parseFloat(cleaned)
-                      setPaymentAmount(isNaN(num) ? 0 : num)
+                      handlePaymentAmountChange(isNaN(num) ? 0 : num)
                     }}
                   />
                   <p className="text-xs text-muted-foreground mt-1">Payment amount</p>
@@ -1522,10 +1636,10 @@ export function ProductForm({
                     onChange={(e) => {
                       const cleaned = cleanNumberInput(e.target.value)
                       const num = parseInt(cleaned)
-                      setPaymentCases(isNaN(num) ? 0 : num)
+                      handlePaymentCasesChange(isNaN(num) ? 0 : num)
                     }}
                   />
-                  <p className="text-xs text-muted-foreground mt-1">Cases being paid for</p>
+                  <p className="text-xs text-muted-foreground mt-1">Type cases or amount — the other fills in</p>
                 </div>
                 <div>
                   <Select value={paymentMethod} onValueChange={(v: any) => setPaymentMethod(v)}>
@@ -1559,17 +1673,28 @@ export function ProductForm({
                   onChange={(e) => setPaymentNotes(e.target.value)}
                 />
               </div>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={addPayment}
-                className="mt-3"
-                disabled={paymentAmount <= 0 || paymentCases <= 0}
-              >
-                <CreditCard className="size-4 mr-1" />
-                Record Payment
-              </Button>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={addPayment}
+                  disabled={paymentAmount <= 0 || paymentCases <= 0}
+                >
+                  <CreditCard className="size-4 mr-1" />
+                  Record Payment
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={markAllAsPaid}
+                  disabled={balanceDue <= 0}
+                >
+                  <Check className="size-4 mr-1" />
+                  Mark all as paid ({formatCurrency(balanceDue)})
+                </Button>
+              </div>
               {errors.payments && (
                 <p className="text-xs text-destructive mt-2">{errors.payments}</p>
               )}
@@ -1577,6 +1702,43 @@ export function ProductForm({
           </Card>
         )}
       </div>
+
+      {/* Overall Debt Summary — both directions */}
+      <Card className="p-4 border-purple-200 bg-purple-50 dark:bg-purple-950/20">
+        <div className="flex items-center gap-2 mb-3">
+          <ClipboardList className="size-4 text-purple-600" />
+          <span className="font-medium text-purple-900 dark:text-purple-100">Debt Summary</span>
+        </div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className={cn(
+            "rounded-lg border p-3",
+            isFullyDelivered ? "border-green-200 bg-green-50 dark:bg-green-950/20" : "border-orange-200 bg-orange-50 dark:bg-orange-950/20"
+          )}>
+            <div className="text-xs text-muted-foreground">Supplier owes you</div>
+            <div className={cn("font-semibold", isFullyDelivered ? "text-green-600" : "text-orange-600")}>
+              {isFullyDelivered ? "Nothing — fully delivered" : `${remainingToReceive} ${containerConfig.containerLabel.toLowerCase()}${remainingToReceive === 1 ? "" : "s"} • ${formatCurrency(supplierDebtValue)}`}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              {remainingToReceive > 0
+                ? `They still need to deliver ${remainingToReceive} of the ${supplierSent} cases you requested`
+                : "All requested cases have been delivered"}
+            </p>
+          </div>
+          <div className={cn(
+            "rounded-lg border p-3",
+            isFullyPaid || balanceDue === 0 ? "border-green-200 bg-green-50 dark:bg-green-950/20" : "border-red-200 bg-red-50 dark:bg-red-950/20"
+          )}>
+            <div className="text-xs text-muted-foreground">You owe supplier</div>
+            <div className={cn("font-semibold", isFullyPaid || balanceDue === 0 ? "text-green-600" : "text-red-600")}>
+              {balanceDue > 0 ? formatCurrency(balanceDue) : "Nothing — fully paid"}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              {supplierSent} cases requested (worth {formatCurrency(totalOrderValue)}), you've paid {formatCurrency(totalPaid)}
+              {isFullyPaid && remainingToReceive > 0 && " — paid in full, awaiting delivery"}
+            </p>
+          </div>
+        </div>
+      </Card>
 
       {(v.sellingPricePerContainer ?? 0) > 0 && (v.purchasePricePerContainer ?? 0) > 0 && (
         <Card className="p-4 border-green-200 bg-green-50 dark:bg-green-950/20">
