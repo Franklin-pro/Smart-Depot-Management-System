@@ -15,6 +15,7 @@ import {
   History,
   UserCircle,
   type LucideIcon,
+  DollarSign,
 } from "lucide-react"
 
 // Extend the Role type locally to include admin
@@ -43,6 +44,7 @@ const items = {
   expiry: { label: "Expiry Tracking", href: "/dashboard/expiry", icon: CalendarClock, roles: ["owner", "manager", "storekeeper"] as ExtendedRole[] },
   suppliers: { label: "Suppliers", href: "/dashboard/suppliers", icon: Truck, roles: ["owner", "storekeeper"] as ExtendedRole[] },
   users: { label: "Users", href: "/dashboard/users", icon: Users, roles: ["owner"] as ExtendedRole[] },
+  dept: { label: "Depts", href: "/dashboard/depts", icon: DollarSign, roles: ["owner","manager","cashier"] as ExtendedRole[] },
   settings: { label: "Settings", href: "/dashboard/settings", icon: Settings, roles: ["owner", "manager"] as ExtendedRole[] },
 } satisfies Record<string, NavItem>
 
@@ -53,6 +55,7 @@ export const navByRole: Record<ExtendedRole, NavItem[]> = {
     items.inventory,
     items.addStock,
     // items.pos,
+    items.dept,
     items.sales,
     items.expenses,
     items.reports,
@@ -67,6 +70,7 @@ export const navByRole: Record<ExtendedRole, NavItem[]> = {
     items.dashboard,
     items.inventory,
     items.pos,
+    items.dept,
     items.salesReports,
     items.expenses,
     items.reports,
@@ -79,6 +83,7 @@ export const navByRole: Record<ExtendedRole, NavItem[]> = {
     items.pos,
     items.salesHistory,
     items.customers,
+    items.dept,
     items.receipts,
     items.emptyCases,
     items.expenses

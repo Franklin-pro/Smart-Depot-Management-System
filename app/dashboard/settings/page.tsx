@@ -264,6 +264,9 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true)
   const [recipientInput, setRecipientInput] = useState("")
 
+  // Check if any report is enabled
+  const hasAnyReportEnabled = reportSettings.dailyEnabled || reportSettings.weeklyEnabled || reportSettings.monthlyEnabled
+
   // Load data on mount
   useEffect(() => {
     const fetchData = async () => {
@@ -518,7 +521,11 @@ export default function SettingsPage() {
                   <FileSpreadsheet className="size-5" />
                   Report Settings
                 </h3>
-                <Button onClick={handleSaveReportSettings} disabled={saving}>
+                <Button 
+                  onClick={handleSaveReportSettings} 
+                  disabled={saving || !hasAnyReportEnabled}
+                  title={!hasAnyReportEnabled ? "Enable at least one report type to save" : ""}
+                >
                   {saving ? (
                     <RefreshCw className="size-4 mr-2 animate-spin" />
                   ) : (
@@ -635,72 +642,110 @@ export default function SettingsPage() {
                   </div>
                 </div>
 
-                <Separator />
+                {/* Only show schedule details if at least one report is enabled */}
+                {hasAnyReportEnabled && (
+                  <>
+                    <Separator />
 
-                {/* Schedule Details */}
-                <div className="grid gap-4 md:grid-cols-3">
-                  <div className="space-y-2">
-                    <Label>Send Hour (24h)</Label>
-                    <Select 
-                      value={String(reportSettings.sendHour)} 
-                      onValueChange={(v) => setReportSettings({ ...reportSettings, sendHour: Number(v) })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {Array.from({ length: 24 }, (_, i) => (
-                          <SelectItem key={i} value={String(i)}>
-                            {i}:00 {i < 12 ? "AM" : "PM"}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    {/* Schedule Details */}
+                    <div className="grid gap-4 md:grid-cols-3">
+                      <div className="space-y-2">
+                        <Label>Send Hour (24h)</Label>
+                        <Select 
+                          value={String(reportSettings.sendHour)} 
+                          onValueChange={(v) => setReportSettings({ ...reportSettings, sendHour: Number(v) })}
+                          disabled={!hasAnyReportEnabled}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {Array.from({ length: 24 }, (_, i) => (
+                              <SelectItem key={i} value={String(i)}>
+                                {i}:00 {i < 12 ? "AM" : "PM"}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {!hasAnyReportEnabled && (
+                          <p className="text-xs text-muted-foreground text-amber-600">
+                            Enable at least one report type to configure
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Weekly Day</Label>
+                        <Select 
+                          value={String(reportSettings.weeklyWeekday)} 
+                          onValueChange={(v) => setReportSettings({ ...reportSettings, weeklyWeekday: Number(v) })}
+                          disabled={!reportSettings.weeklyEnabled}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="0">Sunday</SelectItem>
+                            <SelectItem value="1">Monday</SelectItem>
+                            <SelectItem value="2">Tuesday</SelectItem>
+                            <SelectItem value="3">Wednesday</SelectItem>
+                            <SelectItem value="4">Thursday</SelectItem>
+                            <SelectItem value="5">Friday</SelectItem>
+                            <SelectItem value="6">Saturday</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        {!reportSettings.weeklyEnabled && (
+                          <p className="text-xs text-muted-foreground text-amber-600">
+                            Enable weekly reports to configure
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Monthly Day</Label>
+                        <Select 
+                          value={String(reportSettings.monthlyDay)} 
+                          onValueChange={(v) => setReportSettings({ ...reportSettings, monthlyDay: Number(v) })}
+                          disabled={!reportSettings.monthlyEnabled}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {Array.from({ length: 28 }, (_, i) => (
+                              <SelectItem key={i} value={String(i + 1)}>
+                                Day {i + 1}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {!reportSettings.monthlyEnabled && (
+                          <p className="text-xs text-muted-foreground text-amber-600">
+                            Enable monthly reports to configure
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* Show message when no reports are enabled */}
+                {!hasAnyReportEnabled && (
+                  <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-lg p-4">
+                    <div className="flex items-start gap-3">
+                      <AlertCircle className="size-5 text-amber-600 dark:text-amber-400 mt-0.5" />
+                      <div>
+                        <p className="font-medium text-amber-800 dark:text-amber-300">No Reports Enabled</p>
+                        <p className="text-sm text-amber-700 dark:text-amber-400">
+                          Enable at least one report type (Daily, Weekly, or Monthly) to configure the schedule settings.
+                        </p>
+                      </div>
+                    </div>
                   </div>
+                )}
 
-                  <div className="space-y-2">
-                    <Label>Weekly Day</Label>
-                    <Select 
-                      value={String(reportSettings.weeklyWeekday)} 
-                      onValueChange={(v) => setReportSettings({ ...reportSettings, weeklyWeekday: Number(v) })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="0">Sunday</SelectItem>
-                        <SelectItem value="1">Monday</SelectItem>
-                        <SelectItem value="2">Tuesday</SelectItem>
-                        <SelectItem value="3">Wednesday</SelectItem>
-                        <SelectItem value="4">Thursday</SelectItem>
-                        <SelectItem value="5">Friday</SelectItem>
-                        <SelectItem value="6">Saturday</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Monthly Day</Label>
-                    <Select 
-                      value={String(reportSettings.monthlyDay)} 
-                      onValueChange={(v) => setReportSettings({ ...reportSettings, monthlyDay: Number(v) })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {Array.from({ length: 28 }, (_, i) => (
-                          <SelectItem key={i} value={String(i + 1)}>
-                            Day {i + 1}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                {/* Last Sent Information */}
-                {reportSettings.updatedAt && (
+                {/* Last Sent Information - Only show if reports are enabled */}
+                {hasAnyReportEnabled && reportSettings.updatedAt && (
                   <>
                     <Separator />
                     <div className="grid gap-2 md:grid-cols-3">
