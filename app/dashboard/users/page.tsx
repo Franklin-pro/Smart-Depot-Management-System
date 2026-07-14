@@ -62,20 +62,9 @@ import {
   TabsTrigger,
 } from "@/components/ui/tabs"
 import { usersService } from "@/services"
+import type { Role, User, UserStatus } from "@/lib/types"
 
-// Types
-type UserRole = "owner" | "manager" | "cashier" | "storekeeper" | "admin"
-type UserStatus = "active" | "inactive" | "suspended"
-
-interface User {
-  id: number
-  name: string
-  email: string
-  role: UserRole
-  phone: string
-  status: UserStatus
-  createdAt: string
-}
+type UserRole = Role
 
 // Create User Modal
 function CreateUserModal({ 
@@ -85,7 +74,7 @@ function CreateUserModal({
 }: { 
   open: boolean
   onOpenChange: (open: boolean) => void
-  onCreate: (data: any) => Promise<void>
+  onCreate: (data: any) => Promise<User | undefined>
 }) {
   const [formData, setFormData] = useState({
     name: "",
@@ -95,12 +84,30 @@ function CreateUserModal({
     status: "active" as UserStatus
   })
   const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const handleSubmit = async () => {
+    // Reset error
+    setError(null)
+    
+    // Validate
+    if (!formData.name.trim()) {
+      setError("Name is required")
+      return
+    }
+    if (!formData.email.trim()) {
+      setError("Email is required")
+      return
+    }
+    if (!formData.phone.trim()) {
+      setError("Phone number is required")
+      return
+    }
+    
     setIsLoading(true)
     try {
       await onCreate(formData)
-      onOpenChange(false)
+      // Reset form on success
       setFormData({
         name: "",
         email: "",
@@ -108,15 +115,22 @@ function CreateUserModal({
         phone: "",
         status: "active"
       })
+      onOpenChange(false)
     } catch (error) {
-      console.error('Failed to create user:', error)
+      // Error is already handled in the parent
+      setError(error instanceof Error ? error.message : "Failed to create user")
     } finally {
       setIsLoading(false)
     }
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={(open) => {
+      if (!isLoading) {
+        setError(null)
+        onOpenChange(open)
+      }
+    }}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -129,6 +143,12 @@ function CreateUserModal({
         </DialogHeader>
 
         <div className="space-y-4 py-4">
+          {error && (
+            <div className="p-3 text-sm text-red-600 bg-red-50 dark:bg-red-950/20 dark:text-red-400 rounded-md border border-red-200 dark:border-red-800/50">
+              {error}
+            </div>
+          )}
+          
           <div className="space-y-2">
             <Label>Full Name *</Label>
             <Input
@@ -244,13 +264,14 @@ function EditUserModal({
     status: "active" as UserStatus
   })
   const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     if (user) {
       setFormData({
         name: user.name,
         email: user.email,
-        role: user.role,
+        role: user.role as UserRole,
         phone: user.phone,
         status: user.status
       })
@@ -258,19 +279,35 @@ function EditUserModal({
   }, [user])
 
   const handleSubmit = async () => {
+    setError(null)
+    
+    if (!formData.name.trim()) {
+      setError("Name is required")
+      return
+    }
+    if (!formData.email.trim()) {
+      setError("Email is required")
+      return
+    }
+    
     setIsLoading(true)
     try {
       await onUpdate(formData)
       onOpenChange(false)
     } catch (error) {
-      console.error('Failed to update user:', error)
+      setError(error instanceof Error ? error.message : "Failed to update user")
     } finally {
       setIsLoading(false)
     }
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={(open) => {
+      if (!isLoading) {
+        setError(null)
+        onOpenChange(open)
+      }
+    }}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -283,6 +320,12 @@ function EditUserModal({
         </DialogHeader>
 
         <div className="space-y-4 py-4">
+          {error && (
+            <div className="p-3 text-sm text-red-600 bg-red-50 dark:bg-red-950/20 dark:text-red-400 rounded-md border border-red-200 dark:border-red-800/50">
+              {error}
+            </div>
+          )}
+          
           <div className="space-y-2">
             <Label>Full Name *</Label>
             <Input
@@ -403,7 +446,8 @@ export default function UsersPage() {
           role: u.role || 'cashier',
           phone: u.phone || '',
           status: u.status || 'active',
-          createdAt: u.createdAt || new Date().toISOString()
+          createdAt: u.createdAt || new Date().toISOString(),
+          updatedAt: u.updatedAt || new Date().toISOString()
         }))
         setUserList(usersData)
         setUsers(data)
@@ -467,30 +511,61 @@ export default function UsersPage() {
     }
   }, [userList])
 
-  // Handle create user
+  // Handle create user - Direct API call
   const handleCreateUser = async (data: any) => {
     try {
-      const newUser:any = await addUser(data)
-      
-      if (!newUser || !newUser.id) {
-        throw new Error('Failed to create user: No ID returned')
+      // Validate required fields
+      if (!data.name?.trim() || !data.email?.trim() || !data.role) {
+        toast.error('Name, email, and role are required')
+        return
       }
-      
+
+      // Call API directly via usersService
+      const response = await usersService.create({
+        ...data,
+        name: data.name.trim(),
+        email: data.email.trim().toLowerCase(),
+      })
+
+      // Check if user was created successfully
+      if (!response) {
+        throw new Error('No response from server')
+      }
+
+      if (!response.id) {
+        console.error('User created but missing ID:', response)
+        throw new Error('User created but ID was not returned')
+      }
+
+      // Create the user object for local state
       const userData: User = {
-        id: newUser.id,
-        name: data.name,
-        email: data.email,
-        role: data.role,
-        phone: data.phone,
-        status: data.status,
-        createdAt: newUser.createdAt || new Date().toISOString()
+        id: response.id,
+        name: response.name || data.name,
+        email: response.email || data.email,
+        role: response.role || data.role,
+        phone: response.phone || data.phone || '',
+        status: response.status || data.status || 'active',
+        createdAt: response.createdAt || new Date().toISOString()
       }
+
+      // Update local state
+      setUserList(prev => [userData, ...prev])
       
-      setUserList([userData, ...userList])
-      toast.success(`User ${userData.name} created successfully`)
+      // Show success message
+      toast.success(`User "${userData.name}" created successfully`)
+      
+      return userData
+      
     } catch (error) {
-      console.error('Failed to create user:', error)
-      toast.error('Failed to create user')
+      console.error('Error in handleCreateUser:', error)
+      
+      // Show user-friendly error message
+      const message = error instanceof Error 
+        ? error.message 
+        : 'Failed to create user. Please try again.'
+      
+      toast.error(message)
+      throw error // Re-throw for the modal to handle
     }
   }
 
@@ -499,24 +574,35 @@ export default function UsersPage() {
     if (!editingUser) return
     
     try {
-      const updated:any = await updateUser(editingUser.id, data)
+      // Call API directly
+      const response = await usersService.update(editingUser.id, data)
       
-      const updatedUser: User = {
-        ...editingUser,
-        name: data.name,
-        email: data.email,
-        role: data.role,
-        phone: data.phone,
-        status: data.status,
-        updatedAt: updated?.updatedAt || new Date().toISOString()
+      if (!response) {
+        throw new Error('No response from server')
       }
       
+      const updatedUser: any = {
+        ...editingUser,
+        name: data.name || editingUser.name,
+        email: data.email || editingUser.email,
+        role: data.role || editingUser.role,
+        phone: data.phone || editingUser.phone,
+        status: data.status || editingUser.status,
+        updatedAt: response.updatedAt || new Date().toISOString()
+      }
+      
+      // Update local state
       setUserList(userList.map(u => u.id === editingUser.id ? updatedUser : u))
+      
+      // Update store
+      await updateUser(editingUser.id, updatedUser)
+      
       setEditingUser(null)
       toast.success("User updated successfully")
     } catch (error) {
       console.error('Failed to update user:', error)
-      toast.error('Failed to update user')
+      toast.error(error instanceof Error ? error.message : 'Failed to update user')
+      throw error
     }
   }
 
@@ -525,13 +611,20 @@ export default function UsersPage() {
     if (!deletingUser) return
     
     try {
-      await deleteUser(deletingUser.id)
+      // Call API directly
+      await usersService.delete(deletingUser.id)
+      
+      // Update local state
       setUserList(userList.filter(u => u.id !== deletingUser.id))
+      
+      // Update store
+      await deleteUser(deletingUser.id)
+      
       setDeletingUser(null)
       toast.success("User removed successfully")
     } catch (error) {
       console.error('Failed to delete user:', error)
-      toast.error('Failed to delete user')
+      toast.error(error instanceof Error ? error.message : 'Failed to delete user')
     }
   }
 
@@ -577,15 +670,16 @@ export default function UsersPage() {
   }
 
   // Get role badge
-  const getRoleBadge = (role: UserRole) => {
-    const colors: Record<UserRole, string> = {
+  const getRoleBadge = (role: User["role"]) => {
+    const colors: Record<Role, string> = {
       owner: "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400",
       manager: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
       admin: "bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-400",
       cashier: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
       storekeeper: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400",
+      staff: "bg-slate-100 text-slate-800 dark:bg-slate-900/30 dark:text-slate-400",
     }
-    return <Badge className={colors[role]}>{role}</Badge>
+    return <Badge className={colors[role] ?? "bg-slate-100 text-slate-800 dark:bg-slate-900/30 dark:text-slate-400"}>{role}</Badge>
   }
 
   // Show loading state

@@ -16,10 +16,53 @@ export const productsService = {
   },
 
   // Create a new product
-  async create(product: Omit<Product, 'id' | 'createdAt'>): Promise<Product> {
-    const response = await api.post('/products', product);
-    return response.data;
-  },
+ // In services/products.ts
+async create(product: any): Promise<Product> {
+  // Ensure all fields are included
+  const payload = {
+    // Required fields
+    name: product.name,
+    brand: product.brand,
+    category: product.category,
+    supplier: product.supplier || '',
+    fullCases: product.fullCases || 0,
+    emptyCases: product.emptyCases || 0,
+    purchasePrice: product.purchasePrice || 0,
+    sellingPrice: product.sellingPrice || 0,
+    batchNumber: product.batchNumber || '',
+    manufactureDate: product.manufactureDate || new Date().toISOString(),
+    expiryDate: product.expiryDate || new Date().toISOString(),
+    lowStockThreshold: product.lowStockThreshold || 40,
+    depositAmount: product.depositAmount || 0,
+    
+    // Extended fields - THE FIELDS THAT WERE MISSING
+    bottleInfo: product.bottleInfo || {
+      damaged: 0,
+      missing: 0,
+      returned: 0,
+      notes: '',
+    },
+    partialCases: product.partialCases || [],
+    lastStockCheck: product.lastStockCheck || new Date().toISOString(),
+    containerType: product.containerType || 'case',
+    containerSizeLabel: product.containerSizeLabel || 'Grand',
+    bottleType: product.bottleType || 'grand',
+    purchasePricePerContainer: product.purchasePricePerContainer || 0,
+    sellingPricePerContainer: product.sellingPricePerContainer || 0,
+    supplierSent: product.supplierSent || 0,
+    receivedCases: product.receivedCases || 0,
+    remainingToReceive: product.remainingToReceive || 0,
+    supplierDebtValue: product.supplierDebtValue || 0,
+    payments: product.payments || [],
+    totalPaid: product.totalPaid || 0,
+    balanceDue: product.balanceDue || 0,
+  }
+  
+  console.log('Sending to API:', payload) // Debug log
+  
+  const response = await api.post('/products', payload)
+  return response.data
+},
 
   // Update a product
   async update(id: string, product: Partial<Product>): Promise<Product> {

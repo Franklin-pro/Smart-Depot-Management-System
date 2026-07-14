@@ -671,6 +671,7 @@ export default function EmptyCasesPage() {
         processedBy: currentUser?.name || 'System',
       })
       toast.success(`Processed ${returnQuantity} case return(s)`)
+      emptyCaseTransactionsService.getAll().then((data) => setEmptyCaseTransactions(data))
       return updatedTransaction
     } catch (err) {
       console.error('Failed to process return:', err)

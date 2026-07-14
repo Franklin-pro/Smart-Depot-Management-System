@@ -8,8 +8,10 @@ import {
   BottleWine, RefreshCw, Split, Beer, Eye, X, 
   Calendar, DollarSign, Building, Hash, Clock, 
   TrendingUp, AlertCircle as AlertCircleIcon, CheckCircle,
-  Box, Layers, Archive,
-  Activity
+  Box, Layers, Archive, Activity, FileText, CreditCard,
+  User, Store, CalendarDays, Info, ListChecks, ClipboardList,
+  Coins, Receipt, Truck, PackageCheck, PackageOpen,
+  Warehouse, ShoppingBag, Tags, TicketPercent
 } from "lucide-react"
 import { useApp } from "@/lib/store"
 import { formatCurrency, formatNumber, formatDate, getStockStatus, daysUntil } from "@/lib/format"
@@ -63,8 +65,8 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import { Progress } from "@/components/ui/progress"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { productsService } from "@/services"
+import { cn } from "@/lib/utils"
 
 // Helper function to safely format dates
 function safeFormatDate(date: any): string {
@@ -85,24 +87,31 @@ function safeFormatDate(date: any): string {
   }
 }
 
-// Helper function to get date object safely
-function safeParseDate(date: any): Date | null {
-  if (!date) return null
-  try {
-    if (date instanceof Date) return date
-    if (typeof date === 'string') return new Date(date)
-    if (typeof date === 'object' && date !== null && 'toISOString' in date) {
-      return date
-    }
-    return null
-  } catch (e) {
-    return null
-  }
-}
-
 // Get bottles per container from product data
 function getBottlesPerContainer(product: ExtendedProduct): number {
   return product.bottlesPerContainer || 24
+}
+
+// Convert ExtendedProduct to Product for form compatibility
+function toProduct(extended: ExtendedProduct): Product {
+  return {
+    id: extended.id,
+    name: extended.name,
+    brand: extended.brand,
+    category: extended.category,
+    fullCases: extended.fullCases,
+    emptyCases: extended.emptyCases || 0,
+    purchasePrice: extended.purchasePrice,
+    sellingPrice: extended.sellingPrice,
+    supplier: extended.supplier,
+    batchNumber: extended.batchNumber,
+    manufactureDate: extended.manufactureDate,
+    expiryDate: extended.expiryDate,
+    lowStockThreshold: extended.lowStockThreshold ?? 40,
+    depositAmount: extended.depositAmount || 0,
+    createdAt: extended.createdAt,
+    updatedAt: extended.updatedAt,
+  }
 }
 
 interface BottleInfo {
@@ -121,6 +130,15 @@ interface PartialCase {
   notes?: string
 }
 
+interface Payment {
+  id: string
+  amount: number
+  casesPaid: number
+  paymentDate: string
+  paymentMethod: string
+  notes?: string
+}
+
 interface ExtendedProduct extends Product {
   bottleInfo?: BottleInfo
   lastStockCheck?: Date | string | null
@@ -129,8 +147,17 @@ interface ExtendedProduct extends Product {
   containerType?: "case" | "box"
   containerSizeLabel?: string
   bottleType?: "small" | "grand"
-  purchasePricePerContainer: number  // Required
-  sellingPricePerContainer: number   // Required
+  purchasePricePerContainer: number
+  sellingPricePerContainer: number
+  supplierSent?: number
+  receivedCases?: number
+  remainingToReceive?: number
+  supplierDebtValue?: number
+  payments?: Payment[]
+  totalPaid?: number
+  balanceDue?: number
+  lowStockThreshold?: number
+  depositAmount?: number
 }
 
 export default function InventoryPage() {
@@ -150,13 +177,21 @@ export default function InventoryPage() {
     notes: ""
   })
 
-  // ✅ Fetch products from API on mount
+  // Fetch products from API on mount
   useEffect(() => {
     const fetchProducts = async () => {
       setIsLoading(true)
       try {
         const data = await productsService.getAll()
-        setProducts(data)
+        const mappedData = data.map((p: any) => ({
+          ...p,
+          bottleInfo: p.bottleInfo || { damaged: 0, missing: 0, returned: 0 },
+          partialCases: p.partialCases || [],
+          payments: p.payments || [],
+          purchasePricePerContainer: p.purchasePricePerContainer || p.purchasePrice * (p.bottlesPerContainer || 24),
+          sellingPricePerContainer: p.sellingPricePerContainer || p.sellingPrice * (p.bottlesPerContainer || 24),
+        }))
+        setProducts(mappedData)
       } catch (error) {
         console.error('Failed to fetch products:', error)
         toast.error('Failed to load products')
@@ -179,7 +214,6 @@ export default function InventoryPage() {
     })
   }, [products, query, status])
 
-  // ✅ Updated to use API
   const handleAdd = async (values: ProductFormValues) => {
     try {
       const extendedProduct: any = {
@@ -191,6 +225,9 @@ export default function InventoryPage() {
         },
         partialCases: values.partialCases || [],
         lastStockCheck: new Date().toISOString(),
+        payments: [],
+        totalPaid: 0,
+        balanceDue: 0,
       }
       await addProduct(extendedProduct)
       setAddOpen(false)
@@ -201,11 +238,16 @@ export default function InventoryPage() {
     }
   }
 
-  // ✅ Updated to use API
   const handleEdit = async (values: ProductFormValues) => {
     if (!editing) return
     try {
-      await updateProduct(editing.id, values)
+      // Ensure we have all required fields
+      const updatedProduct = {
+        ...editing,
+        ...values,
+        updatedAt: new Date().toISOString(),
+      }
+      await updateProduct(editing.id, updatedProduct)
       setEditing(null)
       toast.success("Product updated")
     } catch (error) {
@@ -214,7 +256,6 @@ export default function InventoryPage() {
     }
   }
 
-  // ✅ Updated to use API
   const handleDelete = async () => {
     if (!deleting) return
     try {
@@ -272,7 +313,6 @@ export default function InventoryPage() {
     return (product.emptyCases || 0) * (product.depositAmount || 0)
   }
 
-  // ✅ Updated to use API
   const handleStockAdjustment = async (product: ExtendedProduct, adjustments: Partial<BottleInfo>) => {
     const updatedProduct = {
       ...product,
@@ -289,7 +329,7 @@ export default function InventoryPage() {
     }
     
     try {
-      await updateProduct(product.id, updatedProduct)
+      await updateProduct(product?.id, updatedProduct)
       setStockAdjustOpen(null)
       toast.success("Stock levels updated")
     } catch (error) {
@@ -395,400 +435,649 @@ export default function InventoryPage() {
       : 0
 
     const containerLabel = product.containerType === "box" ? "Box" : "Case"
+    const [activeTab, setActiveTab] = useState("overview")
 
     return (
-    <Dialog open={true} onOpenChange={(o) => !o && onClose()}>
-  <DialogContent className="max-h-[90vh] w-[95vw] max-w-[95vw] overflow-y-auto sm:max-w-6xl xl:max-w-7xl">
-    <DialogHeader>
-      <DialogTitle className="flex items-center justify-between">
-        <span>{product.name}</span>
-        <Badge variant="outline" className="ml-2">
-          {product.batchNumber}
-        </Badge>
-      </DialogTitle>
-      <DialogDescription>
-        {product.brand} · {product.category} · {product.bottleType || "Grand"} · {bottlesPerContainer} bottles/{containerLabel.toLowerCase()}
-      </DialogDescription>
-    </DialogHeader>
+      <Dialog open={true} onOpenChange={(o) => !o && onClose()}>
+        <DialogContent className="max-h-[90vh] w-[95vw] max-w-[95vw] overflow-y-auto sm:max-w-6xl xl:max-w-7xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center justify-between">
+              <span className="text-2xl font-bold">{product.name}</span>
+              <Badge variant="outline" className="ml-2">
+                {product.batchNumber}
+              </Badge>
+            </DialogTitle>
+            <DialogDescription className="flex items-center gap-2 text-base">
+              <span className="font-medium">{product.brand}</span>
+              <span>·</span>
+              <span>{product.category}</span>
+              <span>·</span>
+              <span className="capitalize">{product.bottleType || "Grand"}</span>
+              <span>·</span>
+              <span>{bottlesPerContainer} bottles/{containerLabel.toLowerCase()}</span>
+            </DialogDescription>
+          </DialogHeader>
 
-    <Tabs defaultValue="overview" className="mt-4">
-      <TabsList className="grid w-full grid-cols-4">
-        <TabsTrigger value="overview">Overview</TabsTrigger>
-        <TabsTrigger value="partial-cases">Partial {containerLabel}s</TabsTrigger>
-        <TabsTrigger value="bottles">Bottle Tracking</TabsTrigger>
-        <TabsTrigger value="financial">Financial</TabsTrigger>
-      </TabsList>
-
-      {/* Overview Tab */}
-      <TabsContent value="overview" className="space-y-4">
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          <Card className="p-3">
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Box className="size-4" />
-              Full {containerLabel}s
-            </div>
-            <div className="text-2xl font-bold">{product.fullCases}</div>
-            <div className="text-xs text-muted-foreground">{fullCaseBottles} bottles</div>
-          </Card>
-          
-          <Card className="p-3">
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Layers className="size-4" />
-              Partial {containerLabel}s
-            </div>
-            <div className="text-2xl font-bold text-orange-600">{product.partialCases?.length || 0}</div>
-            <div className="text-xs text-muted-foreground">{partialCaseBottles} bottles</div>
-          </Card>
-          
-          <Card className="p-3">
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <BottleWine className="size-4" />
-              Total Bottles
-            </div>
-            <div className="text-2xl font-bold text-green-600">{totalBottles}</div>
-            <div className="text-xs text-muted-foreground">sellable</div>
-          </Card>
-          
-          <Card className="p-3">
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Archive className="size-4" />
-              Empty {containerLabel}s
-            </div>
-            <div className="text-2xl font-bold">{product.emptyCases || 0}</div>
-            <div className="text-xs text-muted-foreground">{formatCurrency(emptyCasesValue)} deposit</div>
-          </Card>
-        </div>
-
-        <div className="grid gap-4 md:grid-cols-2">
-          <Card className="p-4">
-            <h4 className="font-semibold mb-3 flex items-center gap-2">
-              <Calendar className="size-4" />
-              Expiry Information
-            </h4>
-            <div className="space-y-2">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Manufacture Date:</span>
-                <span>{formatDate(product.manufactureDate)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Expiry Date:</span>
-                <span className={daysToExpiry < 0 ? "text-destructive" : daysToExpiry < 30 ? "text-orange-500" : ""}>
-                  {formatDate(product.expiryDate)}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Days Until Expiry:</span>
-                <Badge variant={daysToExpiry < 0 ? "destructive" : daysToExpiry < 30 ? "outline" : "default"}>
-                  {daysToExpiry < 0 ? "Expired" : `${daysToExpiry} days`}
-                </Badge>
-              </div>
-            </div>
-          </Card>
-
-          <Card className="p-4">
-            <h4 className="font-semibold mb-3 flex items-center gap-2">
-              <Building className="size-4" />
-              Supplier Information
-            </h4>
-            <div className="space-y-2">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Supplier:</span>
-                <span>{product.supplier}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Batch Number:</span>
-                <span className="font-mono">{product.batchNumber}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Last Stock Check:</span>
-                <span>{safeFormatDate(product.lastStockCheck)}</span>
-              </div>
-            </div>
-          </Card>
-        </div>
-
-        <Card className="p-4">
-          <h4 className="font-semibold mb-3 flex items-center gap-2">
-            <Activity className="size-4" />
-            Stock Health
-          </h4>
-          <div className="space-y-3">
-            <div>
-              <div className="flex justify-between text-sm mb-1">
-                <span>Stock Integrity</span>
-                <span>{Math.round(integrity)}%</span>
-              </div>
-              <Progress value={integrity} className="h-2" />
-            </div>
-            <div className="grid grid-cols-3 gap-3 text-center">
-              <div>
-                <div className="text-xs text-muted-foreground">Missing</div>
-                <div className="font-semibold text-destructive">{missingBottles}</div>
-              </div>
-              <div>
-                <div className="text-xs text-muted-foreground">Damaged</div>
-                <div className="font-semibold text-orange-500">{damagedBottles}</div>
-              </div>
-              <div>
-                <div className="text-xs text-muted-foreground">Returned</div>
-                <div className="font-semibold text-green-600">{returnedBottles}</div>
-              </div>
-            </div>
-          </div>
-        </Card>
-      </TabsContent>
-
-      {/* Partial Cases Tab */}
-      <TabsContent value="partial-cases" className="space-y-4">
-        {(product.partialCases || []).length === 0 ? (
-          <Card className="p-8 text-center">
-            <Package className="mx-auto size-12 text-muted-foreground mb-3" />
-            <p className="text-muted-foreground">No open partial {containerLabel.toLowerCase()}s for this product</p>
-            <Button 
-              variant="outline" 
-              size="sm" 
-              className="mt-3"
-              onClick={() => {
-                onClose()
-                setPartialCaseOpen(product)
-              }}
-            >
-              <Split className="size-4 mr-2" />
-              Open a {containerLabel}
-            </Button>
-          </Card>
-        ) : (
-          <div className="space-y-3">
-            {(product.partialCases || []).map((pc, index) => (
-              <Card key={pc.id} className="p-4">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Badge className="bg-orange-100 text-orange-800">
-                        {containerLabel} #{index + 1}
-                      </Badge>
-                      <Badge variant="outline" className="flex items-center gap-1">
-                        {getReasonIcon(pc.reason)}
-                        {getReasonLabel(pc.reason)}
-                      </Badge>
-                    </div>
-                    
-                    <div className="grid gap-2 mt-3 sm:grid-cols-2">
-                      <div>
-                        <div className="text-xs text-muted-foreground">Bottles in {containerLabel}</div>
-                        <div className="text-xl font-semibold">{pc.bottleCount} / {bottlesPerContainer}</div>
-                        <Progress 
-                          value={(pc.bottleCount / bottlesPerContainer) * 100} 
-                          className="h-1 mt-1" 
-                        />
-                      </div>
-                      <div>
-                        <div className="text-xs text-muted-foreground">Opened Date</div>
-                        <div className="font-medium">{safeFormatDate(pc.openedDate)}</div>
-                      </div>
-                      {pc.notes && (
-                        <div className="sm:col-span-2">
-                          <div className="text-xs text-muted-foreground">Notes</div>
-                          <div className="text-sm bg-muted p-2 rounded-md mt-1">{pc.notes}</div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="size-8 text-destructive"
-                    onClick={() => handleClosePartialCase(product, pc.id)}
+          {/* Custom Tab Navigation */}
+          <div className="mt-6 border-b border-border">
+            <div className="flex flex-wrap gap-1">
+              {[
+                { id: "overview", label: "Overview", icon: Info },
+                { id: "partial-cases", label: `Partial ${containerLabel}s`, icon: Layers },
+                { id: "bottles", label: "Bottle Tracking", icon: BottleWine },
+                { id: "financial", label: "Financial", icon: DollarSign },
+                { id: "supplier", label: "Supplier", icon: Truck },
+                { id: "payments", label: "Payments", icon: CreditCard },
+              ].map((tab) => {
+                const Icon = tab.icon
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`
+                      flex items-center gap-2 px-4 py-2 text-sm font-medium transition-all
+                      border-b-2 -mb-px
+                      ${activeTab === tab.id 
+                        ? 'border-primary text-primary' 
+                        : 'border-transparent text-muted-foreground hover:text-foreground hover:border-muted-foreground/30'
+                      }
+                    `}
                   >
-                    <X className="size-4" />
-                  </Button>
-                </div>
-              </Card>
-            ))}
+                    <Icon className="size-4" />
+                    {tab.label}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
 
-            <Card className="p-4 bg-muted/30">
-              <h4 className="font-semibold mb-2">Summary</h4>
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                <div>
-                  <span className="text-muted-foreground">Total Partial {containerLabel}s:</span>
-                  <div className="font-bold">{(product.partialCases || []).length}</div>
+          {/* Tab Content */}
+          <div className="mt-6">
+            {/* Overview Tab */}
+            {activeTab === "overview" && (
+              <div className="space-y-6">
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                  <Card className="p-4">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Box className="size-4" />
+                      Full {containerLabel}s
+                    </div>
+                    <div className="text-2xl font-bold">{product.fullCases}</div>
+                    <div className="text-xs text-muted-foreground">{fullCaseBottles} bottles</div>
+                  </Card>
+                  
+                  <Card className="p-4">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Layers className="size-4" />
+                      Partial {containerLabel}s
+                    </div>
+                    <div className="text-2xl font-bold text-orange-600">{product.partialCases?.length || 0}</div>
+                    <div className="text-xs text-muted-foreground">{partialCaseBottles} bottles</div>
+                  </Card>
+                  
+                  <Card className="p-4">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <BottleWine className="size-4" />
+                      Total Bottles
+                    </div>
+                    <div className="text-2xl font-bold text-green-600">{totalBottles}</div>
+                    <div className="text-xs text-muted-foreground">sellable</div>
+                  </Card>
+                  
+                  <Card className="p-4">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Archive className="size-4" />
+                      Empty {containerLabel}s
+                    </div>
+                    <div className="text-2xl font-bold">{product.emptyCases || 0}</div>
+                    <div className="text-xs text-muted-foreground">{formatCurrency(emptyCasesValue)} deposit</div>
+                  </Card>
                 </div>
-                <div>
-                  <span className="text-muted-foreground">Total Bottles in Partial {containerLabel}s:</span>
-                  <div className="font-bold text-orange-600">{partialCaseBottles}</div>
+
+                <div className="grid gap-6 md:grid-cols-2">
+                  <Card className="p-4">
+                    <h4 className="font-semibold mb-3 flex items-center gap-2">
+                      <Calendar className="size-4" />
+                      Expiry Information
+                    </h4>
+                    <div className="space-y-3">
+                      <div className="flex justify-between items-center border-b pb-2">
+                        <span className="text-muted-foreground">Manufacture Date:</span>
+                        <span className="font-medium">{formatDate(product.manufactureDate)}</span>
+                      </div>
+                      <div className="flex justify-between items-center border-b pb-2">
+                        <span className="text-muted-foreground">Expiry Date:</span>
+                        <span className={cn("font-medium", daysToExpiry < 0 ? "text-destructive" : daysToExpiry < 30 ? "text-orange-500" : "")}>
+                          {formatDate(product.expiryDate)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-muted-foreground">Days Until Expiry:</span>
+                        <Badge variant={daysToExpiry < 0 ? "destructive" : daysToExpiry < 30 ? "outline" : "default"}>
+                          {daysToExpiry < 0 ? "Expired" : `${daysToExpiry} days`}
+                        </Badge>
+                      </div>
+                    </div>
+                  </Card>
+
+                  <Card className="p-4">
+                    <h4 className="font-semibold mb-3 flex items-center gap-2">
+                      <Building className="size-4" />
+                      Supplier Information
+                    </h4>
+                    <div className="space-y-3">
+                      <div className="flex justify-between items-center border-b pb-2">
+                        <span className="text-muted-foreground">Supplier:</span>
+                        <span className="font-medium">{product.supplier}</span>
+                      </div>
+                      <div className="flex justify-between items-center border-b pb-2">
+                        <span className="text-muted-foreground">Batch Number:</span>
+                        <span className="font-mono">{product.batchNumber}</span>
+                      </div>
+                      <div className="flex justify-between items-center border-b pb-2">
+                        <span className="text-muted-foreground">Supplier Sent:</span>
+                        <span className="font-medium">{product.supplierSent || 0} {containerLabel.toLowerCase()}s</span>
+                      </div>
+                      <div className="flex justify-between items-center border-b pb-2">
+                        <span className="text-muted-foreground">Received:</span>
+                        <span className="font-medium text-green-600">{product.receivedCases || product.fullCases} {containerLabel.toLowerCase()}s</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-muted-foreground">Remaining to Receive:</span>
+                        <span className="font-bold text-orange-500">{product.remainingToReceive || 0} {containerLabel.toLowerCase()}s</span>
+                      </div>
+                    </div>
+                  </Card>
                 </div>
-                <div>
-                  <span className="text-muted-foreground">Average Bottles per {containerLabel}:</span>
-                  <div className="font-bold">
-                    {Math.round(partialCaseBottles / (product.partialCases?.length || 1))}
+
+                <div className="grid gap-6 md:grid-cols-2">
+                  <Card className="p-4">
+                    <h4 className="font-semibold mb-3 flex items-center gap-2">
+                      <Activity className="size-4" />
+                      Stock Health
+                    </h4>
+                    <div className="space-y-4">
+                      <div>
+                        <div className="flex justify-between text-sm mb-1">
+                          <span>Stock Integrity</span>
+                          <span className="font-medium">{Math.round(integrity)}%</span>
+                        </div>
+                        <Progress value={integrity} className="h-2" />
+                      </div>
+                      <div className="grid grid-cols-3 gap-3 text-center">
+                        <div className="bg-destructive/10 rounded-lg p-2">
+                          <div className="text-xs text-muted-foreground">Missing</div>
+                          <div className="font-semibold text-destructive text-lg">{missingBottles}</div>
+                        </div>
+                        <div className="bg-orange-500/10 rounded-lg p-2">
+                          <div className="text-xs text-muted-foreground">Damaged</div>
+                          <div className="font-semibold text-orange-500 text-lg">{damagedBottles}</div>
+                        </div>
+                        <div className="bg-green-500/10 rounded-lg p-2">
+                          <div className="text-xs text-muted-foreground">Returned</div>
+                          <div className="font-semibold text-green-600 text-lg">{returnedBottles}</div>
+                        </div>
+                      </div>
+                      <div className="flex justify-between pt-2 border-t">
+                        <span className="text-muted-foreground">Low Stock Threshold:</span>
+                        <span className="font-medium">{product.lowStockThreshold || 40} {containerLabel.toLowerCase()}s</span>
+                      </div>
+                    </div>
+                  </Card>
+
+                  <Card className="p-4">
+                    <h4 className="font-semibold mb-3 flex items-center gap-2">
+                      <Package className="size-4" />
+                      Container Details
+                    </h4>
+                    <div className="space-y-3">
+                      <div className="flex justify-between items-center border-b pb-2">
+                        <span className="text-muted-foreground">Container Type:</span>
+                        <span className="font-medium capitalize">{product.containerType || "Case"}</span>
+                      </div>
+                      <div className="flex justify-between items-center border-b pb-2">
+                        <span className="text-muted-foreground">Size Label:</span>
+                        <span className="font-medium">{product.containerSizeLabel || "Standard"}</span>
+                      </div>
+                      <div className="flex justify-between items-center border-b pb-2">
+                        <span className="text-muted-foreground">Bottles per Container:</span>
+                        <span className="font-bold">{bottlesPerContainer}</span>
+                      </div>
+                      <div className="flex justify-between items-center border-b pb-2">
+                        <span className="text-muted-foreground">Bottle Type:</span>
+                        <span className="font-medium capitalize">{product.bottleType || "Grand"}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-muted-foreground">Last Stock Check:</span>
+                        <span className="font-medium">{safeFormatDate(product.lastStockCheck)}</span>
+                      </div>
+                    </div>
+                  </Card>
+                </div>
+              </div>
+            )}
+
+            {/* Partial Cases Tab */}
+            {activeTab === "partial-cases" && (
+              <div className="space-y-4">
+                {(product.partialCases || []).length === 0 ? (
+                  <Card className="p-8 text-center">
+                    <Package className="mx-auto size-12 text-muted-foreground mb-3" />
+                    <p className="text-muted-foreground">No open partial {containerLabel.toLowerCase()}s for this product</p>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="mt-3"
+                      onClick={() => {
+                        onClose()
+                        setPartialCaseOpen(product)
+                      }}
+                    >
+                      <Split className="size-4 mr-2" />
+                      Open a {containerLabel}
+                    </Button>
+                  </Card>
+                ) : (
+                  <div className="space-y-3">
+                    {(product.partialCases || []).map((pc, index) => (
+                      <Card key={pc.id} className="p-4">
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-2">
+                              <Badge className="bg-orange-100 text-orange-800">
+                                {containerLabel} #{index + 1}
+                              </Badge>
+                              <Badge variant="outline" className="flex items-center gap-1">
+                                {getReasonIcon(pc.reason)}
+                                {getReasonLabel(pc.reason)}
+                              </Badge>
+                            </div>
+                            
+                            <div className="grid gap-3 mt-3 sm:grid-cols-2">
+                              <div>
+                                <div className="text-xs text-muted-foreground">Bottles in {containerLabel}</div>
+                                <div className="text-xl font-semibold">{pc.bottleCount} / {bottlesPerContainer}</div>
+                                <Progress value={(pc.bottleCount / bottlesPerContainer) * 100} className="h-1 mt-1" />
+                              </div>
+                              <div>
+                                <div className="text-xs text-muted-foreground">Opened Date</div>
+                                <div className="font-medium">{safeFormatDate(pc.openedDate)}</div>
+                              </div>
+                              {pc.notes && (
+                                <div className="sm:col-span-2">
+                                  <div className="text-xs text-muted-foreground">Notes</div>
+                                  <div className="text-sm bg-muted p-2 rounded-md mt-1">{pc.notes}</div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-8 text-destructive hover:text-destructive"
+                            onClick={() => handleClosePartialCase(product, pc.id)}
+                          >
+                            <X className="size-4" />
+                          </Button>
+                        </div>
+                      </Card>
+                    ))}
+
+                    <Card className="p-4 bg-muted/30">
+                      <h4 className="font-semibold mb-2">Summary</h4>
+                      <div className="grid grid-cols-2 gap-3 text-sm">
+                        <div>
+                          <span className="text-muted-foreground">Total Partial {containerLabel}s:</span>
+                          <div className="font-bold">{(product.partialCases || []).length}</div>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">Total Bottles in Partial {containerLabel}s:</span>
+                          <div className="font-bold text-orange-600">{partialCaseBottles}</div>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">Average Bottles per {containerLabel}:</span>
+                          <div className="font-bold">
+                            {Math.round(partialCaseBottles / (product.partialCases?.length || 1))}
+                          </div>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">Missing from Full {containerLabel}s:</span>
+                          <div className="font-bold text-destructive">
+                            {bottlesPerContainer * product.fullCases - fullCaseBottles}
+                          </div>
+                        </div>
+                      </div>
+                    </Card>
                   </div>
+                )}
+              </div>
+            )}
+
+            {/* Bottle Tracking Tab */}
+            {activeTab === "bottles" && (
+              <div className="space-y-4">
+                <div className="grid gap-4 md:grid-cols-2">
+                  <Card className="p-4">
+                    <h4 className="font-semibold mb-3 flex items-center gap-2">
+                      <AlertCircleIcon className="size-4 text-destructive" />
+                      Issues
+                    </h4>
+                    <div className="space-y-3">
+                      <div className="flex justify-between items-center p-3 bg-destructive/10 rounded-lg">
+                        <span className="font-medium">Missing Bottles</span>
+                        <span className="font-bold text-destructive text-lg">{missingBottles}</span>
+                      </div>
+                      <div className="flex justify-between items-center p-3 bg-orange-500/10 rounded-lg">
+                        <span className="font-medium">Damaged Bottles</span>
+                        <span className="font-bold text-orange-500 text-lg">{damagedBottles}</span>
+                      </div>
+                      <div className="flex justify-between items-center p-3 bg-green-500/10 rounded-lg">
+                        <span className="font-medium">Returned Bottles</span>
+                        <span className="font-bold text-green-600 text-lg">{returnedBottles}</span>
+                      </div>
+                    </div>
+                  </Card>
+
+                  <Card className="p-4">
+                    <h4 className="font-semibold mb-3 flex items-center gap-2">
+                      <CheckCircle className="size-4 text-green-600" />
+                      Good Stock
+                    </h4>
+                    <div className="space-y-3">
+                      <div className="flex justify-between items-center p-3 bg-green-500/10 rounded-lg">
+                        <span className="font-medium">Full {containerLabel} Bottles</span>
+                        <span className="font-bold text-green-600 text-lg">{fullCaseBottles}</span>
+                      </div>
+                      <div className="flex justify-between items-center p-3 bg-blue-500/10 rounded-lg">
+                        <span className="font-medium">Partial {containerLabel} Bottles</span>
+                        <span className="font-bold text-blue-600 text-lg">{partialCaseBottles}</span>
+                      </div>
+                      <div className="flex justify-between items-center p-3 bg-purple-500/10 rounded-lg">
+                        <span className="font-medium">Total Sellable</span>
+                        <span className="font-bold text-purple-600 text-lg">{totalBottles}</span>
+                      </div>
+                    </div>
+                  </Card>
                 </div>
-                <div>
-                  <span className="text-muted-foreground">Missing from Full {containerLabel}s:</span>
-                  <div className="font-bold text-destructive">
-                    {bottlesPerContainer * product.fullCases - fullCaseBottles}
+
+                {(product.bottleInfo?.notes) && (
+                  <Card className="p-4">
+                    <h4 className="font-semibold mb-2">Stock Notes</h4>
+                    <p className="text-sm bg-muted p-3 rounded-md">{product.bottleInfo.notes}</p>
+                  </Card>
+                )}
+
+                <Card className="p-4">
+                  <h4 className="font-semibold mb-2">Stock History</h4>
+                  <div className="text-sm text-muted-foreground">
+                    Last checked: {safeFormatDate(product.lastStockCheck)}
                   </div>
+                </Card>
+              </div>
+            )}
+
+            {/* Financial Tab */}
+            {activeTab === "financial" && (
+              <div className="space-y-4">
+                <div className="grid gap-4 md:grid-cols-2">
+                  <Card className="p-4">
+                    <h4 className="font-semibold mb-3 flex items-center gap-2">
+                      <DollarSign className="size-4" />
+                      Pricing
+                    </h4>
+                    <div className="space-y-2">
+                      <div className="flex justify-between border-b pb-2">
+                        <span className="text-muted-foreground">Purchase Price per {containerLabel}:</span>
+                        <span className="font-medium">{formatCurrency(product.purchasePricePerContainer || 0)}</span>
+                      </div>
+                      <div className="flex justify-between border-b pb-2">
+                        <span className="text-muted-foreground">Selling Price per {containerLabel}:</span>
+                        <span className="font-semibold text-green-600">{formatCurrency(product.sellingPricePerContainer || 0)}</span>
+                      </div>
+                      <div className="flex justify-between border-b pb-2">
+                        <span className="text-muted-foreground">Purchase Price per Bottle:</span>
+                        <span className="font-medium">{formatCurrency(product.purchasePrice)}</span>
+                      </div>
+                      <div className="flex justify-between border-b pb-2">
+                        <span className="text-muted-foreground">Selling Price per Bottle:</span>
+                        <span className="font-semibold text-green-600">{formatCurrency(product.sellingPrice)}</span>
+                      </div>
+                      <div className="flex justify-between pt-2">
+                        <span className="text-muted-foreground">Profit per Bottle:</span>
+                        <span className="font-bold text-green-600">{formatCurrency(product.sellingPrice - product.purchasePrice)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Profit Margin:</span>
+                        <span className="font-bold text-blue-600">{profitMargin.toFixed(1)}%</span>
+                      </div>
+                    </div>
+                  </Card>
+
+                  <Card className="p-4">
+                    <h4 className="font-semibold mb-3 flex items-center gap-2">
+                      <Coins className="size-4" />
+                      Deposit Information
+                    </h4>
+                    <div className="space-y-2">
+                      <div className="flex justify-between border-b pb-2">
+                        <span className="text-muted-foreground">Deposit per {containerLabel}:</span>
+                        <span className="font-medium">{formatCurrency(product.depositAmount || 0)}</span>
+                      </div>
+                      <div className="flex justify-between border-b pb-2">
+                        <span className="text-muted-foreground">Empty {containerLabel}s:</span>
+                        <span className="font-medium">{product.emptyCases || 0}</span>
+                      </div>
+                      <div className="flex justify-between pt-2">
+                        <span className="text-muted-foreground">Total Deposit Value:</span>
+                        <span className="font-bold">{formatCurrency(emptyCasesValue)}</span>
+                      </div>
+                    </div>
+                  </Card>
                 </div>
+
+                <Card className="p-4">
+                  <h4 className="font-semibold mb-3 flex items-center gap-2">
+                    <Receipt className="size-4" />
+                    Inventory Value
+                  </h4>
+                  <div className="space-y-2">
+                    <div className="flex justify-between border-b pb-2">
+                      <span className="text-muted-foreground">Total Bottles:</span>
+                      <span className="font-medium">{totalBottles}</span>
+                    </div>
+                    <div className="flex justify-between border-b pb-2">
+                      <span className="text-muted-foreground">Total Stock Value (Cost):</span>
+                      <span className="font-medium">{formatCurrency(totalBottles * product.purchasePrice)}</span>
+                    </div>
+                    <div className="flex justify-between border-b pb-2">
+                      <span className="text-muted-foreground">Potential Revenue:</span>
+                      <span className="font-bold text-green-600">{formatCurrency(totalBottles * product.sellingPrice)}</span>
+                    </div>
+                    <div className="flex justify-between pt-2">
+                      <span className="text-muted-foreground">Potential Profit:</span>
+                      <span className="font-bold text-blue-600">{formatCurrency(totalBottles * (product.sellingPrice - product.purchasePrice))}</span>
+                    </div>
+                  </div>
+                </Card>
+
+                {(product.supplierDebtValue !== undefined || product.balanceDue !== undefined) && (
+                  <Card className="p-4 border-orange-200 dark:border-orange-800/50 bg-orange-50/50 dark:bg-orange-950/20">
+                    <h4 className="font-semibold mb-3 flex items-center gap-2">
+                      <Truck className="size-4" />
+                      Supplier Debt Summary
+                    </h4>
+                    <div className="space-y-2">
+                      <div className="flex justify-between border-b pb-2">
+                        <span className="text-muted-foreground">Supplier Debt Value:</span>
+                        <span className="font-semibold">{formatCurrency(product.supplierDebtValue || 0)}</span>
+                      </div>
+                      <div className="flex justify-between border-b pb-2">
+                        <span className="text-muted-foreground">Total Paid:</span>
+                        <span className="font-bold text-green-600">{formatCurrency(product.totalPaid || 0)}</span>
+                      </div>
+                      <div className="flex justify-between pt-2">
+                        <span className="text-muted-foreground">Balance Due:</span>
+                        <span className={cn("font-bold", product.balanceDue && product.balanceDue > 0 ? "text-destructive" : "text-green-600")}>
+                          {formatCurrency(product.balanceDue || 0)}
+                        </span>
+                      </div>
+                    </div>
+                  </Card>
+                )}
               </div>
-            </Card>
+            )}
+
+            {/* Supplier Tab */}
+            {activeTab === "supplier" && (
+              <div className="space-y-4">
+                <Card className="p-4">
+                  <h4 className="font-semibold mb-3 flex items-center gap-2">
+                    <Building className="size-4" />
+                    Supplier Details
+                  </h4>
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-center border-b pb-2">
+                      <span className="text-muted-foreground">Supplier Name:</span>
+                      <span className="font-medium">{product.supplier}</span>
+                    </div>
+                    <div className="flex justify-between items-center border-b pb-2">
+                      <span className="text-muted-foreground">Batch Number:</span>
+                      <span className="font-mono">{product.batchNumber}</span>
+                    </div>
+                    <div className="flex justify-between items-center border-b pb-2">
+                      <span className="text-muted-foreground">Supplier Sent:</span>
+                      <span className="font-medium">{product.supplierSent || 0} {containerLabel.toLowerCase()}s</span>
+                    </div>
+                    <div className="flex justify-between items-center border-b pb-2">
+                      <span className="text-muted-foreground">Received Cases:</span>
+                      <span className="font-medium text-green-600">{product.receivedCases || product.fullCases} {containerLabel.toLowerCase()}s</span>
+                    </div>
+                    <div className="flex justify-between items-center border-b pb-2">
+                      <span className="text-muted-foreground">Remaining to Receive:</span>
+                      <span className="font-bold text-orange-500">{product.remainingToReceive || 0} {containerLabel.toLowerCase()}s</span>
+                    </div>
+                    <div className="flex justify-between items-center pt-2">
+                      <span className="text-muted-foreground">Supplier Debt Value:</span>
+                      <span className="font-bold">{formatCurrency(product.supplierDebtValue || 0)}</span>
+                    </div>
+                  </div>
+                </Card>
+
+                <Card className="p-4">
+                  <h4 className="font-semibold mb-3 flex items-center gap-2">
+                    <PackageCheck className="size-4" />
+                    Order Summary
+                  </h4>
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-center border-b pb-2">
+                      <span className="text-muted-foreground">Total Ordered:</span>
+                      <span className="font-medium">{product.supplierSent || 0} {containerLabel.toLowerCase()}s</span>
+                    </div>
+                    <div className="flex justify-between items-center border-b pb-2">
+                      <span className="text-muted-foreground">Total Received:</span>
+                      <span className="font-medium text-green-600">{product.receivedCases || product.fullCases} {containerLabel.toLowerCase()}s</span>
+                    </div>
+                    <div className="flex justify-between items-center border-b pb-2">
+                      <span className="text-muted-foreground">Pending:</span>
+                      <span className="font-bold text-orange-500">{product.remainingToReceive || 0} {containerLabel.toLowerCase()}s</span>
+                    </div>
+                    <div className="flex justify-between items-center pt-2">
+                      <span className="text-muted-foreground">Order Value:</span>
+                      <span className="font-bold">{formatCurrency((product.supplierSent || 0) * (product.purchasePricePerContainer || 0))}</span>
+                    </div>
+                  </div>
+                </Card>
+              </div>
+            )}
+
+            {/* Payments Tab */}
+            {activeTab === "payments" && (
+              <div className="space-y-4">
+                {(product.payments || []).length === 0 ? (
+                  <Card className="p-8 text-center">
+                    <CreditCard className="mx-auto size-12 text-muted-foreground mb-3" />
+                    <p className="text-muted-foreground">No payment records found</p>
+                  </Card>
+                ) : (
+                  <div className="space-y-3">
+                    {(product.payments || []).map((payment) => (
+                      <Card key={payment.id} className="p-4">
+                        <div className="space-y-3">
+                          <div className="flex items-center gap-3">
+                            <Badge className="bg-green-100 text-green-800 dark:bg-green-900/30">
+                              Payment #{payment.id.slice(-6)}
+                            </Badge>
+                            <Badge variant="outline" className="capitalize">
+                              {payment.paymentMethod}
+                            </Badge>
+                          </div>
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <div className="text-xs text-muted-foreground">Amount</div>
+                              <div className="font-bold text-green-600 text-lg">{formatCurrency(payment.amount)}</div>
+                            </div>
+                            <div>
+                              <div className="text-xs text-muted-foreground">Cases Paid</div>
+                              <div className="font-medium">{payment.casesPaid} cases</div>
+                            </div>
+                            <div className="col-span-2">
+                              <div className="text-xs text-muted-foreground">Payment Date</div>
+                              <div className="font-medium">{safeFormatDate(payment.paymentDate)}</div>
+                            </div>
+                            {payment.notes && (
+                              <div className="col-span-2">
+                                <div className="text-xs text-muted-foreground">Notes</div>
+                                <div className="text-sm bg-muted p-2 rounded-md mt-1">{payment.notes}</div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </Card>
+                    ))}
+
+                    <Card className="p-4 bg-muted/30">
+                      <h4 className="font-semibold mb-2">Payment Summary</h4>
+                      <div className="grid grid-cols-2 gap-3 text-sm">
+                        <div>
+                          <span className="text-muted-foreground">Total Paid:</span>
+                          <div className="font-bold text-green-600 text-lg">{formatCurrency(product.totalPaid || 0)}</div>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">Balance Due:</span>
+                          <div className={cn("font-bold text-lg", product.balanceDue && product.balanceDue > 0 ? "text-destructive" : "text-green-600")}>
+                            {formatCurrency(product.balanceDue || 0)}
+                          </div>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">Total Payments:</span>
+                          <div className="font-bold">{(product.payments || []).length}</div>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">Total Cases Paid:</span>
+                          <div className="font-bold">{(product.payments || []).reduce((sum, p) => sum + p.casesPaid, 0)}</div>
+                        </div>
+                      </div>
+                    </Card>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
-        )}
-      </TabsContent>
 
-      {/* Bottle Tracking Tab */}
-      <TabsContent value="bottles" className="space-y-4">
-        <div className="grid gap-4 md:grid-cols-2">
-          <Card className="p-4">
-            <h4 className="font-semibold mb-3 flex items-center gap-2">
-              <AlertCircleIcon className="size-4 text-destructive" />
-              Issues
-            </h4>
-            <div className="space-y-3">
-              <div className="flex justify-between items-center p-2 bg-destructive/10 rounded-lg">
-                <span>Missing Bottles</span>
-                <span className="font-bold text-destructive">{missingBottles}</span>
-              </div>
-              <div className="flex justify-between items-center p-2 bg-orange-500/10 rounded-lg">
-                <span>Damaged Bottles</span>
-                <span className="font-bold text-orange-500">{damagedBottles}</span>
-              </div>
-              <div className="flex justify-between items-center p-2 bg-green-500/10 rounded-lg">
-                <span>Returned Bottles</span>
-                <span className="font-bold text-green-600">{returnedBottles}</span>
-              </div>
-            </div>
-          </Card>
-
-          <Card className="p-4">
-            <h4 className="font-semibold mb-3 flex items-center gap-2">
-              <CheckCircle className="size-4 text-green-600" />
-              Good Stock
-            </h4>
-            <div className="space-y-3">
-              <div className="flex justify-between items-center p-2 bg-green-500/10 rounded-lg">
-                <span>Full {containerLabel} Bottles</span>
-                <span className="font-bold text-green-600">{fullCaseBottles}</span>
-              </div>
-              <div className="flex justify-between items-center p-2 bg-blue-500/10 rounded-lg">
-                <span>Partial {containerLabel} Bottles</span>
-                <span className="font-bold text-blue-600">{partialCaseBottles}</span>
-              </div>
-              <div className="flex justify-between items-center p-2 bg-purple-500/10 rounded-lg">
-                <span>Total Sellable</span>
-                <span className="font-bold text-purple-600">{totalBottles}</span>
-              </div>
-            </div>
-          </Card>
-        </div>
-
-        {(product.bottleInfo?.notes) && (
-          <Card className="p-4">
-            <h4 className="font-semibold mb-2">Stock Notes</h4>
-            <p className="text-sm bg-muted p-3 rounded-md">{product.bottleInfo.notes}</p>
-          </Card>
-        )}
-
-        <Card className="p-4">
-          <h4 className="font-semibold mb-2">Stock History</h4>
-          <div className="text-sm text-muted-foreground">
-            Last checked: {safeFormatDate(product.lastStockCheck)}
+          <div className="flex justify-end gap-2 mt-6 pt-4 border-t">
+            <Button variant="outline" onClick={onClose}>
+              Close
+            </Button>
+            <Button onClick={() => {
+              onClose()
+              setEditing(product)
+            }}>
+              <Pencil className="size-4 mr-2" />
+              Edit Product
+            </Button>
           </div>
-        </Card>
-      </TabsContent>
-
-      {/* Financial Tab */}
-      <TabsContent value="financial" className="space-y-4">
-        <div className="grid gap-4 md:grid-cols-2">
-          <Card className="p-4">
-            <h4 className="font-semibold mb-3">Pricing</h4>
-            <div className="space-y-2">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Purchase Price per {containerLabel}:</span>
-                <span>{formatCurrency(product.purchasePricePerContainer || 0)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Selling Price per {containerLabel}:</span>
-                <span className="font-semibold">{formatCurrency(product.sellingPricePerContainer || 0)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Purchase Price per Bottle:</span>
-                <span>{formatCurrency(product.purchasePrice)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Selling Price per Bottle:</span>
-                <span className="font-semibold">{formatCurrency(product.sellingPrice)}</span>
-              </div>
-              <Separator />
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Profit per Bottle:</span>
-                <span className="text-green-600">{formatCurrency(product.sellingPrice - product.purchasePrice)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Profit Margin:</span>
-                <span className="text-blue-600">{profitMargin.toFixed(1)}%</span>
-              </div>
-            </div>
-          </Card>
-
-          <Card className="p-4">
-            <h4 className="font-semibold mb-3">Deposit Information</h4>
-            <div className="space-y-2">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Deposit per {containerLabel}:</span>
-                <span>{formatCurrency(product.depositAmount || 0)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Empty {containerLabel}s:</span>
-                <span>{product.emptyCases || 0}</span>
-              </div>
-              <Separator />
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Total Deposit Value:</span>
-                <span className="font-semibold">{formatCurrency(emptyCasesValue)}</span>
-              </div>
-            </div>
-          </Card>
-        </div>
-
-        <Card className="p-4">
-          <h4 className="font-semibold mb-3">Inventory Value</h4>
-          <div className="space-y-2">
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Total Bottles:</span>
-              <span>{totalBottles}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Total Stock Value (Cost):</span>
-              <span>{formatCurrency(totalBottles * product.purchasePrice)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Potential Revenue:</span>
-              <span className="text-green-600">{formatCurrency(totalBottles * product.sellingPrice)}</span>
-            </div>
-            <Separator />
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Potential Profit:</span>
-              <span className="text-blue-600">{formatCurrency(totalBottles * (product.sellingPrice - product.purchasePrice))}</span>
-            </div>
-          </div>
-        </Card>
-      </TabsContent>
-    </Tabs>
-
-    <div className="flex justify-end gap-2 mt-4">
-      <Button variant="outline" onClick={onClose}>
-        Close
-      </Button>
-      <Button onClick={() => {
-        onClose()
-        setEditing(product)
-      }}>
-        <Pencil className="size-4 mr-2" />
-        Edit Product
-      </Button>
-    </div>
-  </DialogContent>
-</Dialog>
+        </DialogContent>
+      </Dialog>
     )
   }
 
@@ -1001,6 +1290,11 @@ export default function InventoryPage() {
                                 {partialCasesCount} open {containerLabel.toLowerCase()}(s)
                               </Badge>
                             )}
+                            {extendedP.remainingToReceive && extendedP.remainingToReceive > 0 && (
+                              <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700">
+                                {extendedP.remainingToReceive} pending
+                              </Badge>
+                            )}
                           </div>
                         </TableCell>
                         <TableCell className="text-right">
@@ -1079,7 +1373,7 @@ export default function InventoryPage() {
           </Card>
 
           {/* Summary Statistics */}
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
             <Card className="p-4">
               <div className="text-sm text-muted-foreground">Total Products</div>
               <div className="text-2xl font-bold">{products.length}</div>
@@ -1108,6 +1402,15 @@ export default function InventoryPage() {
                 {products.reduce((sum, p) => {
                   const ep = p as ExtendedProduct
                   return sum + calculateMissingBottles(ep)
+                }, 0)}
+              </div>
+            </Card>
+            <Card className="p-4">
+              <div className="text-sm text-muted-foreground">Pending Orders</div>
+              <div className="text-2xl font-bold text-blue-600">
+                {products.reduce((sum, p) => {
+                  const ep = p as ExtendedProduct
+                  return sum + (ep.remainingToReceive || 0)
                 }, 0)}
               </div>
             </Card>
@@ -1351,7 +1654,13 @@ export default function InventoryPage() {
               <DialogTitle>Edit product</DialogTitle>
               <DialogDescription>Update product details and stock levels.</DialogDescription>
             </DialogHeader>
-            {editing && <ProductForm initial={editing} onSubmit={handleEdit} submitLabel="Save changes" />}
+            {editing && (
+              <ProductForm 
+                initial={toProduct(editing)} 
+                onSubmit={handleEdit} 
+                submitLabel="Save changes" 
+              />
+            )}
           </DialogContent>
         </Dialog>
 

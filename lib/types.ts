@@ -1,19 +1,24 @@
 export type Role = "owner" | "manager" | "cashier" | "storekeeper" | "staff" | "admin"
 
+export type UserStatus = "active" | "inactive" | "suspended"
+
 export type User = {
   id: string
   name: string
   email: string
   role: Role
   phone?: string
-  status: "active" | "inactive"
+  status: UserStatus
   createdAt: string
+  updatedAt?: string
 }
 
 export type StockStatus = "available" | "low" | "expiring" | "expired" | "damaged"
 
-export type Product = {
-  id: string
+// lib/types.ts
+// lib/types.ts
+export interface Product {
+  id: number
   name: string
   brand: string
   category: string
@@ -21,14 +26,54 @@ export type Product = {
   emptyCases: number
   purchasePrice: number
   sellingPrice: number
-  sellingPricePerContainer:number
   supplier: string
   batchNumber: string
   manufactureDate: string
   expiryDate: string
-  lowStockThreshold: number
-  depositAmount: number
+  lowStockThreshold?: number
+  depositAmount?: number
   createdAt: string
+  updatedAt?: string
+  
+  // Extended fields - ADD THESE
+  bottleInfo?: {
+    damaged: number
+    missing: number
+    returned: number
+    notes?: string
+  }
+  partialCases?: Array<{
+    id: string
+    productId?: string
+    bottleCount: number
+    openedDate: string | Date
+    reason: "sold_individual" | "broken_container" | "sample" | "other"
+    notes?: string
+    containerType?: "case" | "box"
+    sizeLabel?: string
+    bottleType?: "small" | "grand"
+  }>
+  lastStockCheck?: string | Date | null
+  containerType?: "case" | "box"
+  containerSizeLabel?: string
+  bottleType?: "small" | "grand"
+  purchasePricePerContainer?: number
+  sellingPricePerContainer?: number
+  supplierSent?: number
+  receivedCases?: number
+  remainingToReceive?: number
+  supplierDebtValue?: number
+  payments?: Array<{
+    id: string
+    amount: number
+    casesPaid: number
+    paymentDate: string | Date
+    paymentMethod: "cash" | "bank_transfer" | "mobile_money" | "check"
+    reference?: string
+    notes?: string
+  }>
+  totalPaid?: number
+  balanceDue?: number
 }
 
 export type Supplier = {

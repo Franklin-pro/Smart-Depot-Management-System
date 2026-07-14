@@ -71,6 +71,24 @@ import {
 import { customersService } from "@/services"
 
 // ============================================
+// TYPES
+// ============================================
+
+interface TransactionSummary extends Customer {
+  totalDeposits: number
+  totalRefunded: number
+  pendingDeposits: number
+  totalTransactions: number
+  pendingTransactions: number
+  totalEmptyCases: number
+  returnedEmptyCases: number
+  pendingEmptyCases: number
+  unpaidBalance: number
+  pendingEmpties: number
+  refundableDeposits: number
+}
+
+// ============================================
 // FORM COMPONENTS
 // ============================================
 
@@ -226,7 +244,6 @@ export default function CustomersPage() {
   // Load customers from API on mount - ONLY ONCE
   useEffect(() => {
     const loadCustomers = async () => {
-      // Skip if data is already loaded
       if (dataLoaded.current) return
       
       setIsLoading(true)
@@ -245,7 +262,7 @@ export default function CustomersPage() {
     }
 
     loadCustomers()
-  }, []) // Empty dependency array - only run once on mount
+  }, [])
 
   // API CRUD operations
   const handleAddCustomer = async (data: any) => {
@@ -280,7 +297,6 @@ export default function CustomersPage() {
   }
 
   const handleDeleteCustomer = async (id: string) => {
-    // Prevent multiple simultaneous delete requests
     if (deleteInProgress.current) return
     if (!confirm('Are you sure you want to delete this customer?')) return
     
@@ -310,20 +326,6 @@ export default function CustomersPage() {
   const [viewDialogOpen, setViewDialogOpen] = useState(false)
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
 
-  // Filter customers
-  const filteredCustomers = useMemo(() => {
-    return customers.filter(c => {
-      const matchQuery = c.name.toLowerCase().includes(query.toLowerCase()) ||
-                        c.phone?.toLowerCase().includes(query.toLowerCase()) ||
-                        c.email?.toLowerCase().includes(query.toLowerCase()) ||
-                        c.city?.toLowerCase().includes(query.toLowerCase())
-      
-      const matchType = typeFilter === "all" || c.type === typeFilter
-      
-      return matchQuery && matchType
-    }).sort((a, b) => a.name.localeCompare(b.name))
-  }, [customers, query, typeFilter])
-
   // Calculate customer statistics with related transactions
   const customerStats = useMemo(() => {
     const totalCustomers = customers.length
@@ -332,21 +334,48 @@ export default function CustomersPage() {
     ).length
     
     // Aggregate transaction data by customer
-    const transactionSummary = customers.map(c => {
+    const transactionSummary: TransactionSummary[] = customers.map(c => {
       const transactions = emptyCaseTransactions.filter(t => t.customerId === c.id)
+      
+      // Calculate transaction totals
       const totalDeposits = transactions.reduce((sum, t) => sum + t.totalDepositValue, 0)
       const totalRefunded = transactions.reduce((sum, t) => sum + t.refundedAmount, 0)
       const pendingDeposits = transactions.reduce((sum, t) => sum + (t.pendingQuantity * t.depositAmount), 0)
       const totalTransactions = transactions.length
       const pendingTransactions = transactions.filter(t => t.pendingQuantity > 0).length
       
+      // Calculate empty cases
+      const totalEmptyCases = transactions.reduce((sum, t) => sum + t.totalQuantity, 0)
+      const returnedEmptyCases = transactions.reduce((sum, t) => sum + t.returnedQuantity, 0)
+      const pendingEmptyCases = totalEmptyCases - returnedEmptyCases
+      
+      // Use the actual customer data from API
       return {
-        ...c,
+        id: c.id,
+        name: c.name,
+        phone: c.phone || "",
+        email: c.email || "",
+        address: c.address || "",
+        city: c.city || "",
+        type: c.type,
+        notes: c.notes || "",
+        createdAt: c.createdAt,
+        updatedAt: c.updatedAt,
+        totalSpent: c.totalSpent || 0,
+        totalPurchases: c.totalPurchases || 0,
+        refundableDeposits: c.refundableDeposits || 0,
+        // Use API values if they exist, otherwise calculate
+        unpaidBalance: c.unpaidBalance ?? pendingDeposits,
+        pendingEmpties: c.pendingEmpties ?? pendingEmptyCases,
+        // Calculated fields
         totalDeposits,
         totalRefunded,
         pendingDeposits,
         totalTransactions,
         pendingTransactions,
+        totalEmptyCases,
+        returnedEmptyCases,
+        pendingEmptyCases,
       }
     })
 
@@ -363,6 +392,20 @@ export default function CustomersPage() {
       transactionSummary,
     }
   }, [customers, emptyCaseTransactions])
+
+  // Filter customers
+  const filteredCustomers = useMemo(() => {
+    return customers.filter(c => {
+      const matchQuery = c.name.toLowerCase().includes(query.toLowerCase()) ||
+                        c.phone?.toLowerCase().includes(query.toLowerCase()) ||
+                        c.email?.toLowerCase().includes(query.toLowerCase()) ||
+                        c.city?.toLowerCase().includes(query.toLowerCase())
+      
+      const matchType = typeFilter === "all" || c.type === typeFilter
+      
+      return matchQuery && matchType
+    }).sort((a, b) => a.name.localeCompare(b.name))
+  }, [customers, query, typeFilter])
 
   // Chart colors
   const chartColors = {
@@ -385,6 +428,11 @@ export default function CustomersPage() {
 
   // Export functionality
   const handleExport = (format: "csv" | "excel") => {
+    if (filteredCustomers.length === 0) {
+      toast.error("No customers to export")
+      return
+    }
+
     const data = filteredCustomers.map(c => {
       const stats = customerStats.transactionSummary.find(s => s.id === c.id)
       return {
@@ -396,6 +444,8 @@ export default function CustomersPage() {
         "Total Transactions": stats?.totalTransactions || 0,
         "Pending Deposits": formatCurrency(stats?.pendingDeposits || 0),
         "Total Refunded": formatCurrency(stats?.totalRefunded || 0),
+        "Unpaid Balance": formatCurrency(stats?.unpaidBalance || 0),
+        "Pending Empties": stats?.pendingEmpties || 0,
       }
     })
 
@@ -603,7 +653,7 @@ export default function CustomersPage() {
                       <TableHead>Type</TableHead>
                       <TableHead>City</TableHead>
                       <TableHead className="text-right">Transactions</TableHead>
-                      <TableHead className="text-right">Pending Deposits</TableHead>
+                      <TableHead className="text-right">Unpaid Balance / Empty Cases</TableHead>
                       <TableHead className="text-right">Total Refunded</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
@@ -645,8 +695,15 @@ export default function CustomersPage() {
                           <TableCell className="text-right font-medium">
                             {stats?.totalTransactions || 0}
                           </TableCell>
-                          <TableCell className="text-right text-yellow-600 dark:text-yellow-400 font-medium">
-                            {formatCurrency(stats?.pendingDeposits || 0)}
+                          <TableCell className="text-right">
+                            <div className="flex flex-col items-end">
+                              <span className="text-yellow-600 dark:text-yellow-400 font-medium">
+                                {formatCurrency(stats?.unpaidBalance || 0)}
+                              </span>
+                              <span className="text-xs text-muted-foreground">
+                                Empty cases: {stats?.pendingEmpties || 0}
+                              </span>
+                            </div>
                           </TableCell>
                           <TableCell className="text-right text-green-600 dark:text-green-400 font-medium">
                             {formatCurrency(stats?.totalRefunded || 0)}
@@ -805,12 +862,21 @@ export default function CustomersPage() {
                     <CartesianGrid strokeDasharray="3 3" className="stroke-gray-200 dark:stroke-gray-800" />
                     <XAxis dataKey="name" className="text-xs fill-muted-foreground" />
                     <YAxis className="text-xs fill-muted-foreground" />
-                    <Tooltip 
-                      contentStyle={{
-                        backgroundColor: "hsl(var(--background))",
-                        borderColor: "hsl(var(--border))",
-                      }}
-                    />
+                <Tooltip 
+  contentStyle={{
+    backgroundColor: "hsl(var(--background))",
+    borderColor: "hsl(var(--border))",
+    color: "hsl(var(--foreground))",
+    borderRadius: "var(--radius)",
+    boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)",
+  }}
+  labelStyle={{
+    color: "hsl(var(--foreground))",
+  }}
+  itemStyle={{
+    color: "hsl(var(--foreground))",
+  }}
+/>
                     <Legend />
                     <Bar dataKey="totalTransactions" fill={chartColors.retail} name="Transactions" />
                     <Bar dataKey="pendingTransactions" fill={chartColors.pending} name="Pending" />
@@ -921,7 +987,7 @@ export default function CustomersPage() {
                       <TableHead>Type</TableHead>
                       <TableHead className="text-right">Total Transactions</TableHead>
                       <TableHead className="text-right">Pending Cases</TableHead>
-                      <TableHead className="text-right">Pending Deposits</TableHead>
+                      <TableHead className="text-right">Unpaid Balance</TableHead>
                       <TableHead className="text-right">Total Refunded</TableHead>
                       <TableHead className="text-right">Return Rate</TableHead>
                     </TableRow>
@@ -950,7 +1016,7 @@ export default function CustomersPage() {
                                 .reduce((sum, t) => sum + t.pendingQuantity, 0)}
                             </TableCell>
                             <TableCell className="text-right text-yellow-600 dark:text-yellow-400 font-medium">
-                              {formatCurrency(stats.pendingDeposits)}
+                              {formatCurrency(stats.unpaidBalance || 0)}
                             </TableCell>
                             <TableCell className="text-right text-green-600 dark:text-green-400 font-medium">
                               {formatCurrency(stats.totalRefunded)}
@@ -1048,6 +1114,16 @@ export default function CustomersPage() {
                       <div>
                         <span className="text-muted-foreground">Pending Transactions:</span>
                         <span className="ml-2 font-medium">{stats?.pendingTransactions || 0}</span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Unpaid Balance:</span>
+                        <span className="ml-2 font-medium text-yellow-600 dark:text-yellow-400">
+                          {formatCurrency(stats?.unpaidBalance || 0)}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Pending Empties:</span>
+                        <span className="ml-2 font-medium">{stats?.pendingEmpties || 0}</span>
                       </div>
                     </div>
                   )

@@ -55,10 +55,7 @@ export default function LoginPage() {
     try {
       // Use the usersService login
       const response = await usersService.login(email, password)
-      
-      console.log("Login response:", response)
 
-      // Get user data from response
       const user = response.user
 
       // Update app state

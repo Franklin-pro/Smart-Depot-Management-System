@@ -1,3 +1,4 @@
+// lib/store.tsx
 "use client"
 
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react"
@@ -36,7 +37,7 @@ import {
 type AppState = {
   currentUser: User | null
   ready: boolean
-  isLoading: boolean // Changed from boolean | undefined to boolean
+  isLoading: boolean
   products: Product[]
   suppliers: Supplier[]
   customers: Customer[]
@@ -52,9 +53,12 @@ type AppState = {
   login: (email: string, password: string) => Promise<User | null>
   logout: () => void
   refreshData: () => Promise<void>
-  addProduct: (p: Omit<Product, "id" | "createdAt">) => Promise<void>
-  updateProduct: (id: string, p: Partial<Product>) => Promise<void>
-  deleteProduct: (id: string) => Promise<void>
+  
+  // Product CRUD - Fixed return types
+  addProduct: (p: any) => Promise<Product>  // Changed to accept any and return Product
+  updateProduct: (id: string | number, p: Partial<Product>) => Promise<void>
+  deleteProduct: (id: string | number) => Promise<void>
+  
   addCustomer: (c: Omit<Customer, "id" | "createdAt" | "updatedAt">) => Promise<Customer>
   updateCustomer: (id: string, c: Partial<Customer>) => Promise<Customer>
   deleteCustomer: (id: string) => Promise<void>
@@ -64,7 +68,7 @@ type AppState = {
   updateExpense: (id: string, e: Partial<Expense>) => Promise<void>
   deleteExpense: (id: string) => Promise<void>
   addSupplier: (s: Omit<Supplier, "id" | "createdAt">) => Promise<void>
-  addUser: (u: Omit<User, "id" | "createdAt">) => Promise<void>
+   addUser: (u: Omit<User, "id" | "createdAt">) => Promise<User>
   updateUser: (id: string, u: Partial<User>) => Promise<void>
   deleteUser: (id: string) => Promise<void>
   markNotificationsRead: (notificationIds?: string[]) => Promise<void>
@@ -75,6 +79,7 @@ type AppState = {
   addDamagedCase: (d: Omit<DamagedCase, "id">) => Promise<void>
   addTransactionAudit: (a: Omit<TransactionAudit, "id" | "performedAt">) => Promise<void>
   checkAndGenerateNotifications: () => void
+  
   // Setters for data refresh
   setEmptyCaseTransactions: (data: EmptyCaseTransaction[] | ((prev: EmptyCaseTransaction[]) => EmptyCaseTransaction[])) => void
   setProducts: (data: Product[] | ((prev: Product[]) => Product[])) => void
@@ -96,7 +101,7 @@ const uid = () => Math.random().toString(36).slice(2, 10)
 export function AppProvider({ children }: { children: ReactNode }) {
   const [currentUser, setCurrentUser] = useState<User | null>(null)
   const [ready, setReady] = useState(false)
-  const [isLoading, setIsLoading] = useState(false) // Always boolean, never undefined
+  const [isLoading, setIsLoading] = useState(false)
   
   // Data states
   const [products, setProducts] = useState<Product[]>([])
@@ -130,7 +135,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     
     const token = localStorage.getItem('accessToken')
     if (!token) {
-      // No token, clear user and redirect
       setCurrentUser(null)
       localStorage.removeItem(STORAGE_KEY)
       return
@@ -140,7 +144,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [ready, currentUser])
 
   async function fetchData() {
-    // Don't fetch if not authenticated
     const token = localStorage.getItem('accessToken')
     if (!token || !currentUser) return
 
@@ -174,7 +177,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
         transactionAuditsService.getAll(),
       ])
 
-      // Only set data if the promise was fulfilled
       if (productsData.status === 'fulfilled') setProducts(productsData.value)
       if (customersData.status === 'fulfilled') setCustomers(customersData.value)
       if (salesData.status === 'fulfilled') setSales(salesData.value)
@@ -188,7 +190,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (damagedCasesData.status === 'fulfilled') setDamagedCases(damagedCasesData.value)
       if (auditsData.status === 'fulfilled') setTransactionAudits(auditsData.value)
 
-      // Check for notifications after data load
       setTimeout(() => checkAndGenerateNotifications(), 1000)
     } catch (error) {
       console.error('Failed to fetch data:', error)
@@ -217,7 +218,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       
       if (user) {
         persistUser(user)
-        // Data will be fetched by the useEffect when currentUser changes
         return user
       }
       return null
@@ -227,18 +227,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  // Logout function - clear everything
+  // Logout function
   function logout() {
-    // Clear user state
     persistUser(null)
-    
-    // Clear tokens
     localStorage.removeItem('accessToken')
     localStorage.removeItem('tokenType')
     localStorage.removeItem('user')
     sessionStorage.removeItem('auth-data')
     
-    // Clear all data
     setProducts([])
     setCustomers([])
     setSales([])
@@ -252,13 +248,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setDamagedCases([])
     setTransactionAudits([])
     
-    // Redirect to login
     if (typeof window !== 'undefined') {
       window.location.href = '/login'
     }
   }
 
-  // Refresh data function
   async function refreshData() {
     await fetchData()
   }
@@ -309,7 +303,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       })
     }
 
-    // Check for low empty stock (less than 20 cases)
+    // Check for low empty stock
     const lowEmptyStockProducts = products.filter(p => p.emptyCases < 20)
     if (lowEmptyStockProducts.length > 0) {
       newNotifications.push({
@@ -330,7 +324,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const value = useMemo<AppState>(() => ({
     currentUser,
     ready,
-    isLoading, // This is always a boolean
+    isLoading,
     products,
     suppliers,
     customers,
@@ -387,44 +381,136 @@ export function AppProvider({ children }: { children: ReactNode }) {
     },
 
     // ============================================
-    // PRODUCT CRUD OPERATIONS
+    // PRODUCT CRUD OPERATIONS - FIXED
     // ============================================
-    async addProduct(p) {
-      const product = await productsService.create(p)
-      setProducts((prev) => [product, ...prev])
-      pushActivity("stock", `${product.fullCases} cases of ${product.name} added to inventory`)
+    async addProduct(p: any): Promise<Product> {
+      try {
+        console.log('📦 Store: Creating product with data:', p)
+        
+        // Ensure all fields are properly formatted
+        const productData = {
+          // Basic fields
+          name: p.name,
+          brand: p.brand,
+          category: p.category,
+          supplier: p.supplier || '',
+          fullCases: p.fullCases || 0,
+          emptyCases: p.emptyCases || 0,
+          purchasePrice: p.purchasePrice || 0,
+          sellingPrice: p.sellingPrice || 0,
+          batchNumber: p.batchNumber || '',
+          manufactureDate: p.manufactureDate || new Date().toISOString(),
+          expiryDate: p.expiryDate || new Date().toISOString(),
+          lowStockThreshold: p.lowStockThreshold || 40,
+          depositAmount: p.depositAmount || 0,
+          
+          // Extended fields - CRITICAL FOR BOTTLE TRACKING
+          bottleInfo: p.bottleInfo || {
+            damaged: 0,
+            missing: 0,
+            returned: 0,
+            notes: '',
+          },
+          partialCases: p.partialCases || [],
+          lastStockCheck: p.lastStockCheck || new Date().toISOString(),
+          containerType: p.containerType || 'case',
+          containerSizeLabel: p.containerSizeLabel || 'Grand',
+          bottleType: p.bottleType || 'grand',
+          purchasePricePerContainer: p.purchasePricePerContainer || 0,
+          sellingPricePerContainer: p.sellingPricePerContainer || 0,
+          supplierSent: p.supplierSent || 0,
+          receivedCases: p.receivedCases || 0,
+          remainingToReceive: p.remainingToReceive || 0,
+          supplierDebtValue: p.supplierDebtValue || 0,
+          payments: p.payments || [],
+          totalPaid: p.totalPaid || 0,
+          balanceDue: p.balanceDue || 0,
+        }
+        
+        console.log('📤 Store: Sending to API:', productData)
+        
+        const product = await productsService.create(productData)
+        
+        if (!product || !product.id) {
+          throw new Error('Failed to create product: No product returned from API')
+        }
+        
+        console.log('✅ Store: Product created successfully:', product)
+        
+        setProducts((prev) => [product, ...prev])
+        pushActivity("stock", `${product.fullCases || 0} cases of ${product.name} added to inventory`)
+        
+        return product
+      } catch (error) {
+        console.error('❌ Store: Failed to add product:', error)
+        throw error
+      }
     },
 
     async updateProduct(id, patch) {
-      const updated = await productsService.update(id, patch)
-      setProducts((prev) => prev.map((p) => (p.id === id ? updated : p)))
+      try {
+        console.log('📦 Store: Updating product:', id, patch)
+        
+        // Ensure we're preserving all fields
+        const currentProduct = products.find(p => p.id === id)
+        if (!currentProduct) {
+          throw new Error(`Product with id ${id} not found`)
+        }
+        
+        const updatedData = {
+          ...currentProduct,
+          ...patch,
+          updatedAt: new Date().toISOString(),
+        }
+        
+        const updated = await productsService.update(id.toString(), updatedData)
+        setProducts((prev) => prev.map((p) => (p.id === id ? updated : p)))
+        pushActivity("stock", `${updated.name} updated`)
+        
+        console.log('✅ Store: Product updated successfully:', updated)
+      } catch (error) {
+        console.error('❌ Store: Failed to update product:', error)
+        throw error
+      }
     },
 
     async deleteProduct(id) {
-      await productsService.delete(id)
-      setProducts((prev) => prev.filter((p) => p.id !== id))
+      try {
+        console.log('🗑️ Store: Deleting product:', id)
+        await productsService.delete(id.toString())
+        setProducts((prev) => prev.filter((p) => p.id !== id))
+        pushActivity("stock", `Product deleted`)
+        console.log('✅ Store: Product deleted successfully')
+      } catch (error) {
+        console.error('❌ Store: Failed to delete product:', error)
+        throw error
+      }
     },
 
     // ============================================
     // SALE OPERATIONS
     // ============================================
-    async addSale(s:any) {
-      const sale = await salesService.create(s)
-      setSales((prev) => [sale, ...prev])
-      
-      // Refresh products and customers
-      const [updatedProducts, updatedCustomers, updatedTransactions] = await Promise.all([
-        productsService.getAll(),
-        customersService.getAll(),
-        emptyCaseTransactionsService.getAll(),
-      ])
-      setProducts(updatedProducts)
-      setCustomers(updatedCustomers)
-      setEmptyCaseTransactions(updatedTransactions)
-      
-      const expectedEmpties = s.items.reduce((sum: number, i: SaleItem) => sum + i.quantity, 0)
-      pushActivity("sale", `${s.cashier} sold ${expectedEmpties} cases to ${s.customerName}`)
-      return sale
+    async addSale(s: any) {
+      try {
+        const sale = await salesService.create(s)
+        setSales((prev) => [sale, ...prev])
+        
+        const [updatedProducts, updatedCustomers, updatedTransactions] = await Promise.all([
+          productsService.getAll(),
+          customersService.getAll(),
+          emptyCaseTransactionsService.getAll(),
+        ])
+        setProducts(updatedProducts)
+        setCustomers(updatedCustomers)
+        setEmptyCaseTransactions(updatedTransactions)
+        
+        const expectedEmpties = s.items.reduce((sum: number, i: SaleItem) => sum + i.quantity, 0)
+        pushActivity("sale", `${s.cashier} sold ${expectedEmpties} cases to ${s.customerName}`)
+        return sale
+      } catch (error) {
+        console.error('❌ Store: Failed to add sale:', error)
+        throw error
+      }
     },
 
     async recordEmptyReturn(customerId, qty) {
@@ -467,9 +553,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     // USER OPERATIONS
     // ============================================
     async addUser(u) {
-      const user = await usersService.create(u)
-      setUsers((prev) => [user, ...prev])
-      pushActivity("user", `New ${u.role} ${u.name} added`)
+      try {
+        const user = await usersService.create(u)
+        setUsers((prev) => [user, ...prev])
+        pushActivity("user", `New ${u.role} ${u.name} added`)
+        return user
+      } catch (error) {
+        console.error('❌ Store: Failed to add user:', error)
+        throw error
+      }
     },
 
     async updateUser(id, patch) {
@@ -501,12 +593,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     // ============================================
     // EMPTY CASE TRANSACTION OPERATIONS
     // ============================================
-    async addEmptyCaseTransaction(t:any) {
+    async addEmptyCaseTransaction(t: any) {
       const transaction = await emptyCaseTransactionsService.create(t)
       setEmptyCaseTransactions((prev) => [transaction, ...prev])
       pushActivity("empty", `Empty case transaction created for ${t.customerName || "Unknown"}`)
       
-      // Add audit log
       const audit = await transactionAuditsService.create({
         transactionId: transaction.id,
         transactionType: "empty_case",
@@ -519,7 +610,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     },
 
     async updateEmptyCaseTransaction(id, patch) {
-      // This would be a PATCH API call
       setEmptyCaseTransactions((prev) => 
         prev.map((t) => (t.id === id ? { ...t, ...patch, updatedAt: new Date().toISOString() } : t))
       )
@@ -532,11 +622,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       })
       setEmptyCaseTransactions((prev) => prev.map((t) => t.id === transactionId ? transaction : t))
       
-      // Refresh customers
       const updatedCustomers = await customersService.getAll()
       setCustomers(updatedCustomers)
       
-      // Refresh audits
       const updatedAudits = await transactionAuditsService.getAll()
       setTransactionAudits(updatedAudits)
       
@@ -547,7 +635,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const supplierReturn = await supplierReturnsService.create(s)
       setSupplierReturns((prev) => [supplierReturn, ...prev])
       
-      // Add audit log
       const audit = await transactionAuditsService.create({
         transactionId: supplierReturn.id,
         transactionType: "supplier_return",
@@ -564,7 +651,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const damagedCase = await damagedCasesService.create(d)
       setDamagedCases((prev) => [damagedCase, ...prev])
       
-      // Add audit log
       const audit = await transactionAuditsService.create({
         transactionId: damagedCase.id,
         transactionType: "damage_report",

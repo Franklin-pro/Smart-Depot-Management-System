@@ -468,13 +468,6 @@ export default function SettingsPage() {
                 </div>
                 <div className="space-y-1">
                   <p className="text-sm text-muted-foreground flex items-center gap-1">
-                    <Hash className="size-3" />
-                    User ID
-                  </p>
-                  <p className="font-medium">#{userProfile.id || "N/A"}</p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-sm text-muted-foreground flex items-center gap-1">
                     <Shield className="size-3" />
                     Role
                   </p>
