@@ -7,7 +7,9 @@ import {
   ArrowLeft, RefreshCw, CheckCircle, Clock, AlertCircle, Package, Undo2, Plus, 
   Download, FileText, TrendingUp, AlertTriangle, DollarSign, Users, Truck, 
   Wrench, Calendar, Search, Filter, MoreHorizontal, Eye, Edit2, Trash2, X,
-  BarChart3, PieChart
+  BarChart3, PieChart,
+  Pencil,
+  EyeIcon
 } from "lucide-react"
 import { useApp } from "@/lib/store"
 import { formatCurrency, formatNumber, formatDate } from "@/lib/format"
@@ -240,18 +242,22 @@ function SupplierReturnForm({
   currentUser,
   onSubmit, 
   onCancel,
+  initialData,
+  isEdit = false,
 }: { 
   suppliers: any[], 
   products: any[],
   currentUser: any,
   onSubmit: (data: any) => void, 
   onCancel: () => void,
+  initialData?: any,
+  isEdit?: boolean,
 }) {
-  const [selectedSupplier, setSelectedSupplier] = useState("")
-  const [selectedProduct, setSelectedProduct] = useState("")
-  const [quantity, setQuantity] = useState(1)
-  const [receiptNumber, setReceiptNumber] = useState("")
-  const [notes, setNotes] = useState("")
+  const [selectedSupplier, setSelectedSupplier] = useState(initialData?.supplierId || "")
+  const [selectedProduct, setSelectedProduct] = useState(initialData?.productId || "")
+  const [quantity, setQuantity] = useState(initialData?.quantity || 1)
+  const [receiptNumber, setReceiptNumber] = useState(initialData?.receiptNumber || "")
+  const [notes, setNotes] = useState(initialData?.notes || "")
 
   const selectedSupplierData = suppliers.find(s => s.id === selectedSupplier)
   const selectedProductData = products.find(p => p.id === selectedProduct)
@@ -334,11 +340,11 @@ function SupplierReturnForm({
           productName: selectedProductData?.name,
           quantity,
           receiptNumber: receiptNumber || `SUP-${Date.now()}`,
-          returnedDate: new Date().toISOString(),
+          returnedDate: initialData?.returnedDate || new Date().toISOString(),
           receivedBy: currentUser?.name || "System",
           notes,
         })}>
-          Record Return
+          {isEdit ? 'Update Return' : 'Record Return'}
         </Button>
       </div>
     </div>
@@ -350,17 +356,21 @@ function DamagedCaseForm({
   currentUser,
   onSubmit, 
   onCancel,
+  initialData,
+  isEdit = false,
 }: { 
   products: any[],
   currentUser: any,
   onSubmit: (data: any) => void, 
   onCancel: () => void,
+  initialData?: any,
+  isEdit?: boolean,
 }) {
-  const [selectedProduct, setSelectedProduct] = useState("")
-  const [quantity, setQuantity] = useState(1)
-  const [reason, setReason] = useState("")
-  const [damageCost, setDamageCost] = useState(0)
-  const [notes, setNotes] = useState("")
+  const [selectedProduct, setSelectedProduct] = useState(initialData?.productId || "")
+  const [quantity, setQuantity] = useState(initialData?.quantity || 1)
+  const [reason, setReason] = useState(initialData?.reason || "")
+  const [damageCost, setDamageCost] = useState(initialData?.damageCost || 0)
+  const [notes, setNotes] = useState(initialData?.notes || "")
 
   const selectedProductData = products.find(p => p.id === selectedProduct)
 
@@ -437,15 +447,15 @@ function DamagedCaseForm({
         </Button>
         <Button onClick={() => onSubmit({
           productId: selectedProduct,
-          productName: selectedProductData?.name,
+          productName: selectedProductData?.name || initialData?.productName || "",
           quantity,
           reason,
           damageCost,
-          reportedDate: new Date().toISOString(),
+          reportedDate: initialData?.reportedDate || new Date().toISOString(),
           reportedBy: currentUser?.name || "System",
           notes,
         })}>
-          Report Damage
+          {isEdit ? 'Update Damage Report' : 'Report Damage'}
         </Button>
       </div>
     </div>
@@ -497,6 +507,150 @@ function ProcessReturnForm({
 }
 
 // ============================================
+// DAMAGED CASE DETAILS COMPONENT
+// ============================================
+
+function DamagedCaseDetails({ 
+  damagedCase, 
+  onClose,
+  onEdit,
+  onDelete,
+}: { 
+  damagedCase: any, 
+  onClose: () => void,
+  onEdit: () => void,
+  onDelete: () => void,
+}) {
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-1">
+          <p className="text-sm text-muted-foreground">Product</p>
+          <p className="font-medium">{damagedCase.productName}</p>
+        </div>
+        <div className="space-y-1">
+          <p className="text-sm text-muted-foreground">Quantity</p>
+          <p className="font-medium">{damagedCase.quantity}</p>
+        </div>
+        <div className="space-y-1">
+          <p className="text-sm text-muted-foreground">Damage Cost</p>
+          <p className="font-medium text-red-600 dark:text-red-400">
+            {formatCurrency(damagedCase.damageCost)}
+          </p>
+        </div>
+        <div className="space-y-1">
+          <p className="text-sm text-muted-foreground">Reason</p>
+          <Badge variant="outline" className="dark:border-gray-700">
+            {damagedCase.reason}
+          </Badge>
+        </div>
+        <div className="space-y-1">
+          <p className="text-sm text-muted-foreground">Reported Date</p>
+          <p className="font-medium">{formatDate(damagedCase.reportedDate)}</p>
+        </div>
+        <div className="space-y-1">
+          <p className="text-sm text-muted-foreground">Reported By</p>
+          <p className="font-medium">{damagedCase.reportedBy}</p>
+        </div>
+        {damagedCase.notes && (
+          <div className="col-span-2 space-y-1">
+            <p className="text-sm text-muted-foreground">Notes</p>
+            <p className="text-sm bg-muted dark:bg-muted/50 p-3 rounded-lg">
+              {damagedCase.notes}
+            </p>
+          </div>
+        )}
+      </div>
+
+      <div className="flex gap-2 justify-end border-t pt-4">
+        <Button variant="outline" onClick={onClose}>
+          Close
+        </Button>
+        <Button variant="outline" onClick={onEdit}>
+          <Edit2 className="size-4 mr-2" />
+          Edit
+        </Button>
+        <Button variant="destructive" onClick={onDelete}>
+          <Trash2 className="size-4 mr-2" />
+          Delete
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+// ============================================
+// SUPPLIER RETURN DETAILS COMPONENT
+// ============================================
+
+function SupplierReturnDetails({ 
+  supplierReturn, 
+  onClose,
+  onEdit,
+  onDelete,
+}: { 
+  supplierReturn: any, 
+  onClose: () => void,
+  onEdit: () => void,
+  onDelete: () => void,
+}) {
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-1">
+          <p className="text-sm text-muted-foreground">Supplier</p>
+          <p className="font-medium">{supplierReturn.supplierName}</p>
+        </div>
+        <div className="space-y-1">
+          <p className="text-sm text-muted-foreground">Product</p>
+          <p className="font-medium">{supplierReturn.productName}</p>
+        </div>
+        <div className="space-y-1">
+          <p className="text-sm text-muted-foreground">Quantity</p>
+          <p className="font-medium">{supplierReturn.quantity}</p>
+        </div>
+        <div className="space-y-1">
+          <p className="text-sm text-muted-foreground">Receipt Number</p>
+          <Badge variant="outline" className="font-mono dark:border-gray-700">
+            {supplierReturn.receiptNumber}
+          </Badge>
+        </div>
+        <div className="space-y-1">
+          <p className="text-sm text-muted-foreground">Returned Date</p>
+          <p className="font-medium">{formatDate(supplierReturn.returnedDate)}</p>
+        </div>
+        <div className="space-y-1">
+          <p className="text-sm text-muted-foreground">Received By</p>
+          <p className="font-medium">{supplierReturn.receivedBy}</p>
+        </div>
+        {supplierReturn.notes && (
+          <div className="col-span-2 space-y-1">
+            <p className="text-sm text-muted-foreground">Notes</p>
+            <p className="text-sm bg-muted dark:bg-muted/50 p-3 rounded-lg">
+              {supplierReturn.notes}
+            </p>
+          </div>
+        )}
+      </div>
+
+      <div className="flex gap-2 justify-end border-t pt-4">
+        <Button variant="outline" onClick={onClose}>
+          Close
+        </Button>
+        <Button variant="outline" onClick={onEdit}>
+          <Edit2 className="size-4 mr-2" />
+          Edit
+        </Button>
+        <Button variant="destructive" onClick={onDelete}>
+          <Trash2 className="size-4 mr-2" />
+          Delete
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+// ============================================
 // MAIN COMPONENT
 // ============================================
 
@@ -513,14 +667,16 @@ export default function EmptyCasesPage() {
     processEmptyCaseReturn,
     addSupplierReturn,
     addDamagedCase,
+    updateDamagedCase,
+    deleteDamagedCase,
     checkAndGenerateNotifications,
-    setEmptyCaseTransactions,
+    setEmptyCaseTransactions
   } = useApp()
 
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   
-  // State declarations - MUST be before any useEffect that uses them
+  // State declarations
   const [query, setQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState<EmptyCaseStatus | "all">("all")
   const [transactionTypeFilter, setTransactionTypeFilter] = useState<TransactionType | "all">("all")
@@ -536,6 +692,25 @@ export default function EmptyCasesPage() {
   const [damagedCaseOpen, setDamagedCaseOpen] = useState(false)
   const [processReturnOpen, setProcessReturnOpen] = useState(false)
   const [selectedTransaction, setSelectedTransaction] = useState<EmptyCaseTransaction | null>(null)
+
+  // Damaged Case Dialog States
+  const [viewDamagedCaseOpen, setViewDamagedCaseOpen] = useState(false)
+  const [editDamagedCaseOpen, setEditDamagedCaseOpen] = useState(false)
+  const [deleteDamagedCaseOpen, setDeleteDamagedCaseOpen] = useState(false)
+  const [selectedDamagedCase, setSelectedDamagedCase] = useState<any>(null)
+  const [isDeletingDamagedCase, setIsDeletingDamagedCase] = useState(false)
+
+  // Transaction Delete States
+  const [deleteTransactionOpen, setDeleteTransactionOpen] = useState(false)
+  const [isDeletingTransaction, setIsDeletingTransaction] = useState(false)
+  const [transactionToDelete, setTransactionToDelete] = useState<EmptyCaseTransaction | null>(null)
+
+  // Supplier Return States
+  const [viewSupplierReturnOpen, setViewSupplierReturnOpen] = useState(false)
+  const [editSupplierReturnOpen, setEditSupplierReturnOpen] = useState(false)
+  const [deleteSupplierReturnOpen, setDeleteSupplierReturnOpen] = useState(false)
+  const [selectedSupplierReturn, setSelectedSupplierReturn] = useState<any>(null)
+  const [isDeletingSupplierReturn, setIsDeletingSupplierReturn] = useState(false)
 
   // Function to fetch audit logs from API
   const fetchAuditLogs = async () => {
@@ -555,8 +730,8 @@ export default function EmptyCasesPage() {
   const formatStateChange = (prev: any, next: any) => {
     const changes = []
     for (const key in next) {
-      if (prev[key] !== next[key]) {
-        changes.push(`${key}: ${prev[key]} → ${next[key]}`)
+      if (prev?.[key] !== next[key]) {
+        changes.push(`${key}: ${prev?.[key] || 'null'} → ${next[key]}`)
       }
     }
     return changes.join(', ')
@@ -589,20 +764,19 @@ export default function EmptyCasesPage() {
     return <Badge className={config.className}>{config.label}</Badge>
   }
 
-  // ✅ FIX: Store the function in a ref so it's never a useEffect dependency
+  // Store the function in a ref so it's never a useEffect dependency
   const checkNotificationsRef = useRef(checkAndGenerateNotifications)
   useEffect(() => {
     checkNotificationsRef.current = checkAndGenerateNotifications
   })
 
-  // ✅ Load data from API on mount
+  // Load data from API on mount
   useEffect(() => {
     const loadTransactions = async () => {
       setIsLoading(true)
       setError(null)
       try {
         const data = await emptyCaseTransactionsService.getAll()
-        // Update the store with API data
         setEmptyCaseTransactions(data)
       } catch (err) {
         console.error('Failed to load empty case transactions:', err)
@@ -615,16 +789,16 @@ export default function EmptyCasesPage() {
 
     loadTransactions()
     checkNotificationsRef.current?.()
-  }, [setEmptyCaseTransactions]) // ✅ Only depends on setEmptyCaseTransactions
+  }, [setEmptyCaseTransactions])
 
-  // ✅ Load audit logs when active tab changes to audit - MUST be after activeTab is declared
+  // Load audit logs when active tab changes to audit
   useEffect(() => {
     if (activeTab === 'audit') {
       fetchAuditLogs()
     }
-  }, [activeTab]) // ✅ Now activeTab is properly declared
+  }, [activeTab])
 
-  // ✅ Override addEmptyCaseTransaction to use API
+  // Override addEmptyCaseTransaction to use API
   const handleAddTransaction = async (data: any) => {
     setIsLoading(true)
 
@@ -662,7 +836,7 @@ export default function EmptyCasesPage() {
     }
   }
 
-  // ✅ Override processReturn to use API
+  // Override processReturn to use API
   const handleProcessReturn = async (transactionId: string, returnQuantity: number) => {
     setIsLoading(true)
     try {
@@ -671,7 +845,8 @@ export default function EmptyCasesPage() {
         processedBy: currentUser?.name || 'System',
       })
       toast.success(`Processed ${returnQuantity} case return(s)`)
-      emptyCaseTransactionsService.getAll().then((data) => setEmptyCaseTransactions(data))
+      const data = await emptyCaseTransactionsService.getAll()
+      setEmptyCaseTransactions(data)
       return updatedTransaction
     } catch (err) {
       console.error('Failed to process return:', err)
@@ -682,10 +857,186 @@ export default function EmptyCasesPage() {
     }
   }
 
+  // Handle delete transaction
+  const handleDeleteTransaction = async (transactionId: string) => {
+    setIsDeletingTransaction(true)
+    try {
+      await emptyCaseTransactionsService.delete(transactionId)
+      const data = await emptyCaseTransactionsService.getAll()
+      setEmptyCaseTransactions(data)
+      toast.success('Transaction deleted successfully')
+      setDeleteTransactionOpen(false)
+      setTransactionToDelete(null)
+    } catch (err) {
+      console.error('Failed to delete transaction:', err)
+      toast.error('Failed to delete transaction')
+    } finally {
+      setIsDeletingTransaction(false)
+    }
+  }
+
+  // ============================================
+  // DAMAGED CASE CRUD OPERATIONS
+  // ============================================
+
+  // Handle add damaged case with API
+  const handleAddDamagedCase = async (data: any) => {
+    setIsLoading(true)
+    try {
+      const payload = {
+        productId: data.productId,
+        productName: data.productName,
+        quantity: data.quantity,
+        reason: data.reason,
+        damageCost: data.damageCost,
+        reportedDate: data.reportedDate || new Date().toISOString(),
+        reportedBy: data.reportedBy,
+        notes: data.notes,
+      }
+
+      const newDamagedCase = await emptyCaseTransactionsService.createDamagedCase(payload)
+      addDamagedCase(newDamagedCase)
+      toast.success('Damage reported successfully')
+      return newDamagedCase
+    } catch (err) {
+      console.error('Failed to report damage:', err)
+      toast.error('Failed to report damage')
+      throw err
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  // Handle view damaged case details
+  const handleViewDamagedCase = async (damagedCase: any) => {
+    try {
+      const fullDetails = await emptyCaseTransactionsService.getDamagedCaseDetails(damagedCase.id)
+      setSelectedDamagedCase(fullDetails || damagedCase)
+      setViewDamagedCaseOpen(true)
+    } catch (err) {
+      console.error('Failed to load damaged case details:', err)
+      setSelectedDamagedCase(damagedCase)
+      setViewDamagedCaseOpen(true)
+      toast.error('Failed to load full details, showing local data')
+    }
+  }
+
+  // Handle edit damaged case
+  const handleEditDamagedCase = async (data: any) => {
+    if (!selectedDamagedCase) return
+    
+    setIsLoading(true)
+    try {
+      const payload = {
+        productId: data.productId,
+        productName: data.productName,
+        quantity: data.quantity,
+        reason: data.reason,
+        damageCost: data.damageCost,
+        notes: data.notes,
+      }
+
+      const updatedDamagedCase = await emptyCaseTransactionsService.updateDamagedCase(
+        selectedDamagedCase.id, 
+        payload
+      )
+      
+      updateDamagedCase(updatedDamagedCase)
+      toast.success('Damage report updated successfully')
+      setEditDamagedCaseOpen(false)
+      setViewDamagedCaseOpen(false)
+      setSelectedDamagedCase(null)
+    } catch (err) {
+      console.error('Failed to update damage report:', err)
+      toast.error('Failed to update damage report')
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  // Handle delete damaged case
+  const handleDeleteDamagedCase = async () => {
+    if (!selectedDamagedCase) return
+    
+    setIsDeletingDamagedCase(true)
+    try {
+      await emptyCaseTransactionsService.deleteDamagedCase(selectedDamagedCase.id)
+      deleteDamagedCase(selectedDamagedCase.id)
+      toast.success('Damage report deleted successfully')
+      setDeleteDamagedCaseOpen(false)
+      setViewDamagedCaseOpen(false)
+      setSelectedDamagedCase(null)
+    } catch (err) {
+      console.error('Failed to delete damage report:', err)
+      toast.error('Failed to delete damage report')
+    } finally {
+      setIsDeletingDamagedCase(false)
+    }
+  }
+
+  // ============================================
+  // SUPPLIER RETURN CRUD OPERATIONS
+  // ============================================
+
+  // Handle update supplier return
+  const handleUpdateSupplierReturn = async (data: any) => {
+    if (!selectedSupplierReturn) return
+    
+    setIsLoading(true)
+    try {
+      const payload = {
+        supplierId: data.supplierId,
+        supplierName: data.supplierName,
+        productId: data.productId,
+        productName: data.productName,
+        quantity: data.quantity,
+        receiptNumber: data.receiptNumber,
+        notes: data.notes,
+      }
+
+      const updatedSupplierReturn = await emptyCaseTransactionsService.updateSupplierReturn(
+        selectedSupplierReturn.id,
+        payload
+      )
+
+      
+      toast.success('Supplier return updated successfully')
+      setEditSupplierReturnOpen(false)
+      setViewSupplierReturnOpen(false)
+      setSelectedSupplierReturn(null)
+      emptyCaseTransactionsService.getAll().then(data => setEmptyCaseTransactions(data))
+    } catch (err) {
+      console.error('Failed to update supplier return:', err)
+      toast.error('Failed to update supplier return')
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  // Handle delete supplier return
+  const handleDeleteSupplierReturn = async () => {
+    if (!selectedSupplierReturn) return
+    
+    setIsDeletingSupplierReturn(true)
+    try {
+      await emptyCaseTransactionsService.deleteSupplierReturn(selectedSupplierReturn.id)
+      toast.success('Supplier return deleted successfully')
+      setDeleteSupplierReturnOpen(false)
+      setViewSupplierReturnOpen(false)
+      setSelectedSupplierReturn(null)
+      emptyCaseTransactionsService.getAll().then(data => setEmptyCaseTransactions(data))
+    } catch (err) {
+      console.error('Failed to delete supplier return:', err)
+      toast.error('Failed to delete supplier return')
+    } finally {
+      setIsDeletingSupplierReturn(false)
+    }
+  }
+
   // Filter transactions
   const filteredTransactions = useMemo(() => {
-    return emptyCaseTransactions.filter(t => {
-      const product = products.find(p => p.id === t.productId)
+    return emptyCaseTransactions.filter((t:any) => {
+      const product = products.find((p:any) => p.id === t.productId)
       const matchQuery = product?.name.toLowerCase().includes(query.toLowerCase()) ||
                         product?.brand.toLowerCase().includes(query.toLowerCase()) ||
                         t.customerName?.toLowerCase().includes(query.toLowerCase())
@@ -766,8 +1117,8 @@ export default function EmptyCasesPage() {
 
   // Export functionality
   const handleExport = (format: "csv" | "excel") => {
-    const data = filteredTransactions.map(t => {
-      const product = products.find(p => p.id === t.productId)
+    const data = filteredTransactions.map((t:any) => {
+      const product = products.find((p:any) => p.id === t.productId)
       return {
         Product: product?.name || "Unknown",
         Customer: t.customerName || "-",
@@ -836,7 +1187,7 @@ export default function EmptyCasesPage() {
       </div>
 
       <div className="flex flex-col gap-6 p-4 md:p-6">
-        {/* Statistics Cards - with dark mode support */}
+        {/* Statistics Cards */}
         <div className="grid gap-4 md:grid-cols-4 lg:grid-cols-8">
           <Card className="p-4">
             <div className="flex items-center justify-between">
@@ -1027,10 +1378,13 @@ export default function EmptyCasesPage() {
                     <DamagedCaseForm 
                       products={products}
                       currentUser={currentUser}
-                      onSubmit={(data) => {
-                        addDamagedCase(data)
-                        setDamagedCaseOpen(false)
-                        toast.success("Damage reported")
+                      onSubmit={async (data) => {
+                        try {
+                          await handleAddDamagedCase(data)
+                          setDamagedCaseOpen(false)
+                        } catch (error) {
+                          // Error already handled
+                        }
                       }}
                       onCancel={() => setDamagedCaseOpen(false)}
                     />
@@ -1100,8 +1454,8 @@ export default function EmptyCasesPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredTransactions.map((t) => {
-                      const product = products.find(p => p.id === t.productId)
+                    {filteredTransactions.map((t:any) => {
+                      const product = products.find((p:any) => p.id === t.productId)
                       return (
                         <TableRow 
                           key={t.id} 
@@ -1139,21 +1493,33 @@ export default function EmptyCasesPage() {
                             {t.expectedReturnDate ? formatDate(t.expectedReturnDate) : "-"}
                           </TableCell>
                           <TableCell className="text-right">
-                            {t.pendingQuantity > 0 && (
-                              <Button
-                                variant="default"
+                            <div className="flex items-center justify-end gap-1">
+                              {t.pendingQuantity > 0 && (
+                                <Button
+                                  variant="default"
+                                  size="sm"
+                                  onClick={() => {
+                                    setSelectedTransaction(t)
+                                    setProcessReturnOpen(true)
+                                  }}
+                                  className="bg-green-600 hover:bg-green-700 dark:bg-green-700 dark:hover:bg-green-600"
+                                  disabled={isLoading}
+                                >
+                                  <CheckCircle className="size-4 mr-1" />
+                                  Return
+                                </Button>
+                              )}
+                              <Button 
+                                variant="ghost" 
                                 size="sm"
                                 onClick={() => {
-                                  setSelectedTransaction(t)
-                                  setProcessReturnOpen(true)
+                                  setTransactionToDelete(t)
+                                  setDeleteTransactionOpen(true)
                                 }}
-                                className="bg-green-600 hover:bg-green-700 dark:bg-green-700 dark:hover:bg-green-600"
-                                disabled={isLoading}
                               >
-                                <CheckCircle className="size-4 mr-1" />
-                                Return
+                                <Trash2 className="size-4 text-red-500" />
                               </Button>
-                            )}
+                            </div>
                           </TableCell>
                         </TableRow>
                       )
@@ -1255,10 +1621,10 @@ export default function EmptyCasesPage() {
                   Cases by Product
                 </h3>
                 <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={products.map(p => ({
+                  <BarChart data={products.map((p:any) => ({
                     name: p.name,
-                    pending: emptyCaseTransactions.filter(t => t.productId === p.id).reduce((sum, t) => sum + t.pendingQuantity, 0),
-                    returned: emptyCaseTransactions.filter(t => t.productId === p.id).reduce((sum, t) => sum + t.returnedQuantity, 0),
+                    pending: emptyCaseTransactions.filter((t:any) => t.productId === p.id).reduce((sum, t) => sum + t.pendingQuantity, 0),
+                    returned: emptyCaseTransactions.filter((t:any) => t.productId === p.id).reduce((sum, t) => sum + t.returnedQuantity, 0),
                   }))}>
                     <CartesianGrid strokeDasharray="3 3" className="stroke-gray-200 dark:stroke-gray-800" />
                     <XAxis dataKey="name" className="text-xs fill-muted-foreground" />
@@ -1375,6 +1741,7 @@ export default function EmptyCasesPage() {
                       <TableHead>Receipt Number</TableHead>
                       <TableHead>Returned Date</TableHead>
                       <TableHead>Received By</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -1390,11 +1757,45 @@ export default function EmptyCasesPage() {
                         </TableCell>
                         <TableCell>{formatDate(sr.returnedDate)}</TableCell>
                         <TableCell>{sr.receivedBy}</TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <Button 
+                              variant="ghost" 
+                              size="sm"
+                              onClick={() => {
+                                setSelectedSupplierReturn(sr)
+                                setViewSupplierReturnOpen(true)
+                              }}
+                            >
+                              <Eye className="size-4" />
+                            </Button>
+                            <Button 
+                              variant="ghost" 
+                              size="sm"
+                              onClick={() => {
+                                setSelectedSupplierReturn(sr)
+                                setEditSupplierReturnOpen(true)
+                              }}
+                            >
+                              <Edit2 className="size-4" />
+                            </Button>
+                            <Button 
+                              variant="ghost" 
+                              size="sm"
+                              onClick={() => {
+                                setSelectedSupplierReturn(sr)
+                                setDeleteSupplierReturnOpen(true)
+                              }}
+                            >
+                              <Trash2 className="size-4 text-red-500" />
+                            </Button>
+                          </div>
+                        </TableCell>
                       </TableRow>
                     ))}
                     {supplierReturns.length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={6} className="py-12 text-center">
+                        <TableCell colSpan={7} className="py-12 text-center">
                           <Truck className="mx-auto size-8 text-muted-foreground" />
                           <p className="mt-2 text-sm text-muted-foreground">No supplier returns recorded</p>
                         </TableCell>
@@ -1419,6 +1820,7 @@ export default function EmptyCasesPage() {
                       <TableHead className="text-right">Damage Cost</TableHead>
                       <TableHead>Reported Date</TableHead>
                       <TableHead>Reported By</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -1436,11 +1838,42 @@ export default function EmptyCasesPage() {
                         </TableCell>
                         <TableCell>{formatDate(dc.reportedDate)}</TableCell>
                         <TableCell>{dc.reportedBy}</TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <Button 
+                              variant="ghost" 
+                              size="sm"
+                              onClick={() => handleViewDamagedCase(dc)}
+                            >
+                              <Eye className="size-4" />
+                            </Button>
+                            <Button 
+                              variant="ghost" 
+                              size="sm"
+                              onClick={() => {
+                                setSelectedDamagedCase(dc)
+                                setEditDamagedCaseOpen(true)
+                              }}
+                            >
+                              <Edit2 className="size-4" />
+                            </Button>
+                            <Button 
+                              variant="ghost" 
+                              size="sm"
+                              onClick={() => {
+                                setSelectedDamagedCase(dc)
+                                setDeleteDamagedCaseOpen(true)
+                              }}
+                            >
+                              <Trash2 className="size-4 text-red-500" />
+                            </Button>
+                          </div>
+                        </TableCell>
                       </TableRow>
                     ))}
                     {damagedCases.length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={6} className="py-12 text-center">
+                        <TableCell colSpan={7} className="py-12 text-center">
                           <Wrench className="mx-auto size-8 text-muted-foreground" />
                           <p className="mt-2 text-sm text-muted-foreground">No damaged cases reported</p>
                         </TableCell>
@@ -1585,6 +2018,270 @@ export default function EmptyCasesPage() {
                 setSelectedTransaction(null)
               }}
             />
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Transaction Confirmation Dialog */}
+      <Dialog open={deleteTransactionOpen} onOpenChange={setDeleteTransactionOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete Transaction</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete this transaction? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          {transactionToDelete && (
+            <div className="space-y-4">
+              <div className="p-3 bg-muted dark:bg-muted/50 rounded-lg space-y-1 text-sm">
+                <div><span className="font-medium">Product:</span> {transactionToDelete.productName}</div>
+                <div><span className="font-medium">Customer:</span> {transactionToDelete.customerName || '-'}</div>
+                <div><span className="font-medium">Type:</span> {transactionToDelete.transactionType}</div>
+                <div><span className="font-medium">Total Cases:</span> {transactionToDelete.totalQuantity}</div>
+                <div><span className="font-medium">Pending:</span> {transactionToDelete.pendingQuantity}</div>
+                <div><span className="font-medium">Status:</span> {transactionToDelete.status}</div>
+                <div><span className="font-medium">Deposit Value:</span> {formatCurrency(transactionToDelete.totalDepositValue)}</div>
+              </div>
+              <div className="flex gap-2 justify-end">
+                <Button 
+                  variant="outline" 
+                  onClick={() => {
+                    setDeleteTransactionOpen(false)
+                    setTransactionToDelete(null)
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button 
+                  variant="destructive" 
+                  onClick={() => handleDeleteTransaction(transactionToDelete.id)}
+                  disabled={isDeletingTransaction}
+                >
+                  {isDeletingTransaction ? (
+                    <>
+                      <RefreshCw className="size-4 mr-2 animate-spin" />
+                      Deleting...
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="size-4 mr-2" />
+                      Delete
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* View Damaged Case Details Dialog */}
+      <Dialog open={viewDamagedCaseOpen} onOpenChange={setViewDamagedCaseOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Damaged Case Details</DialogTitle>
+            <DialogDescription>
+              View and manage damaged case report
+            </DialogDescription>
+          </DialogHeader>
+          {selectedDamagedCase && (
+            <DamagedCaseDetails 
+              damagedCase={selectedDamagedCase}
+              onClose={() => {
+                setViewDamagedCaseOpen(false)
+                setSelectedDamagedCase(null)
+              }}
+              onEdit={() => {
+                setViewDamagedCaseOpen(false)
+                setEditDamagedCaseOpen(true)
+              }}
+              onDelete={() => {
+                setViewDamagedCaseOpen(false)
+                setDeleteDamagedCaseOpen(true)
+              }}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Damaged Case Dialog */}
+      <Dialog open={editDamagedCaseOpen} onOpenChange={setEditDamagedCaseOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Edit Damaged Case Report</DialogTitle>
+            <DialogDescription>
+              Update the damaged case report details
+            </DialogDescription>
+          </DialogHeader>
+          {selectedDamagedCase && (
+            <DamagedCaseForm 
+              products={products}
+              currentUser={currentUser}
+              initialData={selectedDamagedCase}
+              isEdit={true}
+              onSubmit={handleEditDamagedCase}
+              onCancel={() => {
+                setEditDamagedCaseOpen(false)
+                setSelectedDamagedCase(null)
+              }}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Damaged Case Confirmation Dialog */}
+      <Dialog open={deleteDamagedCaseOpen} onOpenChange={setDeleteDamagedCaseOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete Damaged Case Report</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete this damaged case report? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          {selectedDamagedCase && (
+            <div className="space-y-4">
+              <div className="p-3 bg-muted dark:bg-muted/50 rounded-lg space-y-1 text-sm">
+                <div><span className="font-medium">Product:</span> {selectedDamagedCase.productName}</div>
+                <div><span className="font-medium">Quantity:</span> {selectedDamagedCase.quantity}</div>
+                <div><span className="font-medium">Reason:</span> {selectedDamagedCase.reason}</div>
+                <div><span className="font-medium">Damage Cost:</span> {formatCurrency(selectedDamagedCase.damageCost)}</div>
+              </div>
+              <div className="flex gap-2 justify-end">
+                <Button 
+                  variant="outline" 
+                  onClick={() => {
+                    setDeleteDamagedCaseOpen(false)
+                    setSelectedDamagedCase(null)
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button 
+                  variant="destructive" 
+                  onClick={handleDeleteDamagedCase}
+                  disabled={isDeletingDamagedCase}
+                >
+                  {isDeletingDamagedCase ? (
+                    <>
+                      <RefreshCw className="size-4 mr-2 animate-spin" />
+                      Deleting...
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="size-4 mr-2" />
+                      Delete
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* View Supplier Return Details Dialog */}
+      <Dialog open={viewSupplierReturnOpen} onOpenChange={setViewSupplierReturnOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Supplier Return Details</DialogTitle>
+            <DialogDescription>
+              View supplier return details
+            </DialogDescription>
+          </DialogHeader>
+          {selectedSupplierReturn && (
+            <SupplierReturnDetails 
+              supplierReturn={selectedSupplierReturn}
+              onClose={() => {
+                setViewSupplierReturnOpen(false)
+                setSelectedSupplierReturn(null)
+              }}
+              onEdit={() => {
+                setViewSupplierReturnOpen(false)
+                setEditSupplierReturnOpen(true)
+              }}
+              onDelete={() => {
+                setViewSupplierReturnOpen(false)
+                setDeleteSupplierReturnOpen(true)
+              }}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Supplier Return Dialog */}
+      <Dialog open={editSupplierReturnOpen} onOpenChange={setEditSupplierReturnOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Edit Supplier Return</DialogTitle>
+            <DialogDescription>
+              Update the supplier return details
+            </DialogDescription>
+          </DialogHeader>
+          {selectedSupplierReturn && (
+            <SupplierReturnForm 
+              suppliers={suppliers}
+              products={products}
+              currentUser={currentUser}
+              initialData={selectedSupplierReturn}
+              isEdit={true}
+              onSubmit={handleUpdateSupplierReturn}
+              onCancel={() => {
+                setEditSupplierReturnOpen(false)
+                setSelectedSupplierReturn(null)
+              }}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Supplier Return Confirmation Dialog */}
+      <Dialog open={deleteSupplierReturnOpen} onOpenChange={setDeleteSupplierReturnOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete Supplier Return</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete this supplier return record? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          {selectedSupplierReturn && (
+            <div className="space-y-4">
+              <div className="p-3 bg-muted dark:bg-muted/50 rounded-lg space-y-1 text-sm">
+                <div><span className="font-medium">Supplier:</span> {selectedSupplierReturn.supplierName}</div>
+                <div><span className="font-medium">Product:</span> {selectedSupplierReturn.productName}</div>
+                <div><span className="font-medium">Quantity:</span> {selectedSupplierReturn.quantity}</div>
+                <div><span className="font-medium">Receipt:</span> {selectedSupplierReturn.receiptNumber}</div>
+                <div><span className="font-medium">Date:</span> {formatDate(selectedSupplierReturn.returnedDate)}</div>
+                <div><span className="font-medium">Received By:</span> {selectedSupplierReturn.receivedBy}</div>
+              </div>
+              <div className="flex gap-2 justify-end">
+                <Button 
+                  variant="outline" 
+                  onClick={() => {
+                    setDeleteSupplierReturnOpen(false)
+                    setSelectedSupplierReturn(null)
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button 
+                  variant="destructive" 
+                  onClick={handleDeleteSupplierReturn}
+                  disabled={isDeletingSupplierReturn}
+                >
+                  {isDeletingSupplierReturn ? (
+                    <>
+                      <RefreshCw className="size-4 mr-2 animate-spin" />
+                      Deleting...
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="size-4 mr-2" />
+                      Delete
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
           )}
         </DialogContent>
       </Dialog>

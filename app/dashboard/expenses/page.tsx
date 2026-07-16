@@ -77,6 +77,7 @@ import {
 } from "recharts"
 import { expensesService } from "@/services"
 import Link from "next/link"
+import InfoItem from "@/components/ui/infoItem"
 
 // Types
 type ExpenseCategory = 
@@ -1678,112 +1679,98 @@ export default function ExpensesPage() {
       </Dialog>
 
       {/* View Expense Dialog */}
-      <Dialog open={!!viewingExpense} onOpenChange={(o) => !o && setViewingExpense(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Expense Details</DialogTitle>
-            <DialogDescription>{viewingExpense?.invoiceNumber || "No invoice number"}</DialogDescription>
-          </DialogHeader>
-          {viewingExpense && (
-            <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-2 text-sm">
-                <span className="text-muted-foreground">Category:</span>
-                <span className="capitalize font-medium">{viewingExpense.category}</span>
-                
-                <span className="text-muted-foreground">Title:</span>
-                <span>{viewingExpense.title || viewingExpense.description}</span>
-                
-                <span className="text-muted-foreground">Description:</span>
-                <span>{viewingExpense.description || "-"}</span>
-                
-                <span className="text-muted-foreground">Amount:</span>
-                <span className="font-bold">{formatCurrency(viewingExpense.amount)}</span>
-                
-                <span className="text-muted-foreground">Date:</span>
-                <span>{formatDate(viewingExpense.date)}</span>
-                
-                <span className="text-muted-foreground">Payment Method:</span>
-                <span className="capitalize">{formatPaymentMethod(viewingExpense.paymentMethod)}</span>
-                
-                <span className="text-muted-foreground">Status:</span>
-                <span>{getStatusBadge(viewingExpense.status)}</span>
-                
-                {viewingExpense.quantity && viewingExpense.quantity > 0 && (
-                  <>
-                    <span className="text-muted-foreground">Quantity:</span>
-                    <span>{viewingExpense.quantity}</span>
-                  </>
-                )}
-                
-                {viewingExpense.unitPrice && viewingExpense.unitPrice > 0 && (
-                  <>
-                    <span className="text-muted-foreground">Unit Price:</span>
-                    <span>{formatCurrency(viewingExpense.unitPrice)}</span>
-                  </>
-                )}
-                
-                {viewingExpense.supplierName && (
-                  <>
-                    <span className="text-muted-foreground">Supplier:</span>
-                    <span>{viewingExpense.supplierName}</span>
-                  </>
-                )}
-                
-                {viewingExpense.invoiceNumber && (
-                  <>
-                    <span className="text-muted-foreground">Invoice:</span>
-                    <span>{viewingExpense.invoiceNumber}</span>
-                  </>
-                )}
-                
-                {viewingExpense.receiptNumber && (
-                  <>
-                    <span className="text-muted-foreground">Receipt:</span>
-                    <span>{viewingExpense.receiptNumber}</span>
-                  </>
-                )}
-                
-                {viewingExpense.recordedBy && (
-                  <>
-                    <span className="text-muted-foreground">Recorded By:</span>
-                    <span>{viewingExpense.recordedBy}</span>
-                  </>
-                )}
-                
-                {viewingExpense.receiptUrl && (
-                  <>
-                    <span className="text-muted-foreground">Receipt:</span>
-                    <a 
-                      href={viewingExpense.receiptUrl} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="text-blue-600 hover:underline"
-                    >
-                      View Receipt
-                    </a>
-                  </>
-                )}
-              </div>
-              {viewingExpense.notes && (
-                <>
-                  <Separator />
-                  <div>
-                    <p className="text-sm font-medium">Notes</p>
-                    <p className="text-sm text-muted-foreground">{viewingExpense.notes}</p>
-                  </div>
-                </>
-              )}
-              <Separator />
-              <div className="text-xs text-muted-foreground">
-                <p>Created: {formatDate(viewingExpense.createdAt)} by {viewingExpense.createdBy}</p>
-                {viewingExpense.updatedAt && (
-                  <p>Updated: {formatDate(viewingExpense.updatedAt)} by {viewingExpense.updatedBy}</p>
-                )}
-              </div>
+    <Dialog open={!!viewingExpense} onOpenChange={(o) => !o && setViewingExpense(null)}>
+  <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+    <DialogHeader>
+      <DialogTitle>Expense Details</DialogTitle>
+      {viewingExpense?.invoiceNumber && (
+        <DialogDescription>Invoice #{viewingExpense.invoiceNumber}</DialogDescription>
+      )}
+    </DialogHeader>
+
+    {viewingExpense && (
+      <div className="space-y-6">
+        {/* Header Section - Status & Amount */}
+        <div className="flex items-center justify-between rounded-lg bg-muted/50 p-4">
+          <div className="space-y-1">
+            <p className="text-sm text-muted-foreground">Total Amount</p>
+            <p className="text-2xl font-bold">{formatCurrency(viewingExpense.amount)}</p>
+          </div>
+          <div className="text-right">
+            <p className="text-sm text-muted-foreground">Status</p>
+            <div>{getStatusBadge(viewingExpense.status)}</div>
+          </div>
+        </div>
+
+        {/* Main Information Grid */}
+        <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
+          <InfoItem label="Category" value={viewingExpense.category} capitalize />
+          <InfoItem label="Date" value={formatDate(viewingExpense.date)} />
+          
+          <InfoItem label="Title" value={viewingExpense.title || viewingExpense.description} />
+          <InfoItem label="Payment Method" value={formatPaymentMethod(viewingExpense.paymentMethod)} capitalize />
+          
+          <InfoItem label="Description" value={viewingExpense.description || "-"} className="col-span-2" />
+        </div>
+
+        {/* Quantity & Price Details */}
+        {((viewingExpense.quantity ?? 0) > 0 || (viewingExpense.unitPrice ?? 0) > 0) && (
+          <div className="rounded-lg border bg-card p-4">
+            <h4 className="mb-3 text-sm font-medium">Item Details</h4>
+            <div className="grid grid-cols-3 gap-4 text-sm">
+              <InfoItem label="Quantity" value={viewingExpense.quantity || 0} />
+              <InfoItem label="Unit Price" value={formatCurrency(viewingExpense.unitPrice || 0)} />
+              <InfoItem label="Subtotal" value={formatCurrency(viewingExpense.amount)} />
             </div>
-          )}
-        </DialogContent>
-      </Dialog>
+          </div>
+        )}
+
+        {/* Supplier & Invoice Information */}
+        {(viewingExpense.supplierName || viewingExpense.invoiceNumber || viewingExpense.receiptNumber) && (
+          <div className="rounded-lg border bg-card p-4">
+            <h4 className="mb-3 text-sm font-medium">Records Info</h4>
+            <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
+              <InfoItem label="recordedBy" value={viewingExpense.recordedBy} />
+              <InfoItem label="Invoice Number" value={viewingExpense.invoiceNumber} />
+              <InfoItem label="Receipt Number" value={viewingExpense.receiptNumber} />
+              {viewingExpense.receiptUrl && (
+                <div className="col-span-2">
+                  <span className="text-muted-foreground">Receipt: </span>
+                  <a 
+                    href={viewingExpense.receiptUrl} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="text-blue-600 hover:underline"
+                  >
+                    View Receipt →
+                  </a>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Notes */}
+        {viewingExpense.notes && (
+          <div className="rounded-lg border bg-card p-4">
+            <h4 className="mb-2 text-sm font-medium">Notes</h4>
+            <p className="text-sm text-muted-foreground">{viewingExpense.notes}</p>
+          </div>
+        )}
+
+        {/* Metadata Footer */}
+        <div className="border-t pt-4">
+          <div className="space-y-1 text-xs text-muted-foreground">
+            <p>Created: {formatDate(viewingExpense.date)} by {viewingExpense.createdBy}</p>
+            {viewingExpense.updatedAt && (
+              <p>Last Updated: {formatDate(viewingExpense.updatedAt)} by {viewingExpense.updatedBy}</p>
+            )}
+          </div>
+        </div>
+      </div>
+    )}
+  </DialogContent>
+</Dialog>
 
       {/* Delete Confirmation */}
       <AlertDialog open={!!deletingExpense} onOpenChange={(o) => !o && setDeletingExpense(null)}>

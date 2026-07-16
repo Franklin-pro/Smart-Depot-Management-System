@@ -202,7 +202,7 @@ export function ProductForm({
   onSubmit,
   submitLabel = "Save product",
 }: {
-  initial?: Product
+  initial?: Product | ProductFormValues
   onSubmit: (values: ProductFormValues) => void
   submitLabel?: string
 }) {
@@ -267,6 +267,48 @@ export function ProductForm({
     totalPaid: (initial as any)?.totalPaid ?? 0,
     balanceDue: (initial as any)?.balanceDue ?? 0,
   }))
+
+  useEffect(() => {
+    if (!initial) return
+
+    const nextValues: ProductFormValues = {
+      name: initial.name ?? "",
+      brand: initial.brand ?? "",
+      category: initial.category ?? "Beer",
+      fullCases: initial.fullCases ?? 0,
+      emptyCases: initial.emptyCases ?? 0,
+      purchasePrice: initial.purchasePrice ?? 0,
+      sellingPrice: initial.sellingPrice ?? 0,
+      purchasePricePerContainer: (initial as any)?.purchasePricePerContainer ?? 0,
+      sellingPricePerContainer: (initial as any)?.sellingPricePerContainer ?? 0,
+      supplier: initial.supplier ?? suppliers[0]?.name ?? "",
+      batchNumber: initial.batchNumber ?? "",
+      manufactureDate: initial.manufactureDate ?? new Date().toISOString(),
+      expiryDate: initial.expiryDate ?? new Date().toISOString(),
+      lowStockThreshold: initial.lowStockThreshold ?? 40,
+      depositAmount: initial.depositAmount ?? 0,
+      bottleInfo: (initial as any)?.bottleInfo ?? {
+        damaged: 0,
+        missing: 0,
+        returned: 0,
+        notes: "",
+      },
+      partialCases: (initial as any)?.partialCases ?? [],
+      lastStockCheck: (initial as any)?.lastStockCheck ?? new Date(),
+      containerType: (initial as any)?.containerType ?? getContainerConfig(initial.category ?? "Beer").type,
+      bottlesPerContainer: (initial as any)?.bottlesPerContainer ?? getContainerConfig(initial.category ?? "Beer").defaultBottlesPerContainer,
+      containerSizeLabel: (initial as any)?.containerSizeLabel ?? "Grand",
+      bottleType: (initial as any)?.bottleType ?? "grand",
+      supplierSent: (initial as any)?.supplierSent ?? 0,
+      receivedCases: (initial as any)?.receivedCases ?? 0,
+      remainingToReceive: (initial as any)?.remainingToReceive ?? 0,
+      payments: (initial as any)?.payments ?? [],
+      totalPaid: (initial as any)?.totalPaid ?? 0,
+      balanceDue: (initial as any)?.balanceDue ?? 0,
+    }
+
+    setV(nextValues)
+  }, [initial, suppliers])
 
   // Get current container configuration based on category
   const containerConfig = getContainerConfig(v.category)
@@ -459,15 +501,15 @@ export function ProductForm({
   }
 
   function removePartialCase(id: string) {
-    setV(prev => {
-      const removedCase = (prev.partialCases || []).find(pc => pc.id === id)
+    setV((prev:any) => {
+      const removedCase = (prev.partialCases || []).find((pc:any) => pc.id === id)
       if (!removedCase) return prev
       
       const newFullCases = prev.fullCases + 1
       
       return {
         ...prev,
-        partialCases: (prev.partialCases || []).filter(pc => pc.id !== id),
+        partialCases: (prev.partialCases || []).filter((pc:any) => pc.id !== id),
         fullCases: newFullCases,
       }
     })
@@ -476,9 +518,9 @@ export function ProductForm({
 
   function updatePartialCaseBottles(id: string, newBottleCount: number) {
     if (newBottleCount <= 0 || newBottleCount >= BOTTLES_PER_CONTAINER) return
-    setV(prev => ({
+    setV((prev:any) => ({
       ...prev,
-      partialCases: (prev.partialCases || []).map(pc =>
+      partialCases: (prev.partialCases || []).map((pc:any) =>
         pc.id === id ? { ...pc, bottleCount: newBottleCount } : pc
       ),
     }))
@@ -594,9 +636,9 @@ export function ProductForm({
     const paymentToRemove = (v.payments || []).find(p => p.id === id)
     if (!paymentToRemove) return
 
-    setV(prev => {
-      const updatedPayments = (prev.payments || []).filter(p => p.id !== id)
-      const newTotalPaid = updatedPayments.reduce((sum, p) => sum + p.amount, 0)
+    setV((prev:any) => {
+      const updatedPayments = (prev.payments || []).filter((p:any) => p.id !== id)
+      const newTotalPaid = updatedPayments.reduce((sum:number, p:any) => sum + p.amount, 0)
       const totalDue = (prev.supplierSent || 0) * (prev.purchasePricePerContainer || 0)
       
       return {
@@ -732,17 +774,6 @@ export function ProductForm({
       expiryDate: new Date(v.expiryDate).toISOString(),
       batchNumber: v.batchNumber,
     }
-
-    console.log('Submitting product data:', {
-      supplierSent: productData.supplierSent,
-      receivedCases: productData.receivedCases,
-      remainingToReceive: productData.remainingToReceive,
-      supplierDebtValue: productData.supplierDebtValue,
-      fullCases: productData.fullCases,
-      payments: productData.payments,
-      totalPaid: productData.totalPaid,
-      balanceDue: productData.balanceDue,
-    })
     
     onSubmit(productData)
   }

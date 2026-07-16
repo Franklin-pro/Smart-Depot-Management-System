@@ -98,12 +98,8 @@ export default function SignupPage() {
         phone: formData.phone,
       }
 
-      console.log("Sending user data:", userData)
-
       // Call the signup API
       const response:any = await usersService.signup(userData)
-      
-      console.log("Signup response:", response)
 
       // Store the access token
       if (response.accessToken) {

@@ -92,8 +92,8 @@ function getBottlesPerContainer(product: ExtendedProduct): number {
   return product.bottlesPerContainer || 24
 }
 
-// Convert ExtendedProduct to Product for form compatibility
-function toProduct(extended: ExtendedProduct): Product {
+// Convert ExtendedProduct to the form-compatible shape, preserving supplier tracking fields
+function toProduct(extended: ExtendedProduct): Product & Partial<ProductFormValues> {
   return {
     id: extended.id,
     name: extended.name,
@@ -111,6 +111,26 @@ function toProduct(extended: ExtendedProduct): Product {
     depositAmount: extended.depositAmount || 0,
     createdAt: extended.createdAt,
     updatedAt: extended.updatedAt,
+    bottleInfo: extended.bottleInfo ?? { damaged: 0, missing: 0, returned: 0, notes: "" },
+    partialCases: extended.partialCases ?? [],
+    lastStockCheck: extended.lastStockCheck ? new Date(extended.lastStockCheck) : new Date(),
+    containerType: extended.containerType,
+    bottlesPerContainer: extended.bottlesPerContainer,
+    containerSizeLabel: extended.containerSizeLabel,
+    bottleType: extended.bottleType,
+    purchasePricePerContainer: extended.purchasePricePerContainer,
+    sellingPricePerContainer: extended.sellingPricePerContainer,
+    supplierSent: extended.supplierSent ?? 0,
+    receivedCases: extended.receivedCases ?? 0,
+    remainingToReceive: extended.remainingToReceive ?? 0,
+    supplierDebtValue: extended.supplierDebtValue ?? 0,
+    payments: (extended.payments || []).map((payment) => ({
+      ...payment,
+      paymentDate: payment.paymentDate ? new Date(payment.paymentDate) : new Date(),
+      paymentMethod: (payment.paymentMethod as "cash" | "bank_transfer" | "mobile_money" | "check") || "cash",
+    })),
+    totalPaid: extended.totalPaid ?? 0,
+    balanceDue: extended.balanceDue ?? 0,
   }
 }
 
@@ -123,10 +143,10 @@ interface BottleInfo {
 
 interface PartialCase {
   id: string
-  productId: string
+  productId?: string
   bottleCount: number
   openedDate: Date | string
-  reason: "sold_individual" | "broken_case" | "sample" | "other"
+  reason: "sold_individual" | "broken_container" | "sample" | "other"
   notes?: string
 }
 
@@ -225,9 +245,9 @@ export default function InventoryPage() {
         },
         partialCases: values.partialCases || [],
         lastStockCheck: new Date().toISOString(),
-        payments: [],
-        totalPaid: 0,
-        balanceDue: 0,
+        payments: values.payments || [],
+        totalPaid: values.totalPaid || 0,
+        balanceDue: values.balanceDue || 0,
       }
       await addProduct(extendedProduct)
       setAddOpen(false)
@@ -242,7 +262,7 @@ export default function InventoryPage() {
     if (!editing) return
     try {
       // Ensure we have all required fields
-      const updatedProduct = {
+      const updatedProduct:any = {
         ...editing,
         ...values,
         updatedAt: new Date().toISOString(),
@@ -314,7 +334,7 @@ export default function InventoryPage() {
   }
 
   const handleStockAdjustment = async (product: ExtendedProduct, adjustments: Partial<BottleInfo>) => {
-    const updatedProduct = {
+    const updatedProduct:any = {
       ...product,
       bottleInfo: {
         ...product.bottleInfo,
@@ -353,7 +373,7 @@ export default function InventoryPage() {
 
     const containerLabel = product.containerType === "box" ? "box" : "case"
 
-    const updatedProduct = {
+    const updatedProduct:any = {
       ...product,
       partialCases: [
         ...(product.partialCases || []),
@@ -385,7 +405,7 @@ export default function InventoryPage() {
     const partialCase = (product.partialCases || []).find(pc => pc.id === partialCaseId)
     if (!partialCase) return
 
-    const updatedProduct = {
+    const updatedProduct:any = {
       ...product,
       partialCases: (product.partialCases || []).filter(pc => pc.id !== partialCaseId),
       updatedAt: new Date().toISOString(),
@@ -403,7 +423,7 @@ export default function InventoryPage() {
   const getReasonLabel = (reason: string) => {
     switch (reason) {
       case "sold_individual": return "Individual Sales"
-      case "broken_case": return "Broken Container"
+      case "broken_container": return "Broken Container"
       case "sample": return "Sampling"
       default: return "Other"
     }
@@ -412,7 +432,7 @@ export default function InventoryPage() {
   const getReasonIcon = (reason: string) => {
     switch (reason) {
       case "sold_individual": return <TrendingUp className="size-3" />
-      case "broken_case": return <AlertTriangle className="size-3" />
+      case "broken_container": return <AlertTriangle className="size-3" />
       case "sample": return <Beer className="size-3" />
       default: return <Package className="size-3" />
     }
@@ -1286,7 +1306,7 @@ export default function InventoryPage() {
                           <div className="flex flex-col gap-1">
                             <StatusBadge status={getStockStatus(p)} />
                             {partialCasesCount > 0 && (
-                              <Badge variant="outline" className="text-xs bg-orange-50">
+                              <Badge variant="outline" className="text-xs bg-orange-50  text-orange-500">
                                 {partialCasesCount} open {containerLabel.toLowerCase()}(s)
                               </Badge>
                             )}
@@ -1493,7 +1513,7 @@ export default function InventoryPage() {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="sold_individual">Selling individually</SelectItem>
-                        <SelectItem value="broken_case">Container was damaged/broken</SelectItem>
+                        <SelectItem value="broken_container">Container was damaged/broken</SelectItem>
                         <SelectItem value="sample">Sampling / Promotion</SelectItem>
                         <SelectItem value="other">Other reason</SelectItem>
                       </SelectContent>

@@ -58,8 +58,6 @@ async create(product: any): Promise<Product> {
     balanceDue: product.balanceDue || 0,
   }
   
-  console.log('Sending to API:', payload) // Debug log
-  
   const response = await api.post('/products', payload)
   return response.data
 },

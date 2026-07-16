@@ -1,7 +1,7 @@
 "use client"
 
 import { useApp } from "@/lib/store"
-import { formatCurrency, formatNumber, daysUntil } from "@/lib/format"
+import { formatCurrency, formatNumber, daysUntil, formatDate } from "@/lib/format"
 import { DashboardHeader } from "@/components/dashboard/dashboard-header"
 import { StatCard } from "@/components/dashboard/stat-card"
 import { ActivityFeed } from "@/components/dashboard/activity-feed"
@@ -30,7 +30,7 @@ import { useEffect, useState } from "react"
 import type { DashboardStats } from "@/services/dashboard.service"
 
 export default function DashboardPage() {
-  const { currentUser } = useApp()
+  const { currentUser, sales, products, expenses } = useApp()
   const [dashboardData, setDashboardData] = useState<DashboardStats | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -135,6 +135,26 @@ export default function DashboardPage() {
     missingEmpties: 0,
   }
 
+  // Derive real product alert lists from inventory (latest 3 each)
+  const EXPIRY_WINDOW_DAYS = 30
+
+  const expiringSoon = (products || [])
+    .map((p) => ({ product: p, days: daysUntil(p.expiryDate) }))
+    .filter(({ days }) => days >= 0 && days <= EXPIRY_WINDOW_DAYS)
+    .sort((a, b) => a.days - b.days)
+    .slice(0, 3)
+
+  const expiredProducts = (products || [])
+    .map((p) => ({ product: p, days: daysUntil(p.expiryDate) }))
+    .filter(({ days }) => days < 0)
+    .sort((a, b) => b.days - a.days)
+    .slice(0, 3)
+
+  const lowStockList = (products || [])
+    .filter((p) => (p.fullCases || 0) <= (p.lowStockThreshold || 0))
+    .sort((a, b) => (a.fullCases || 0) - (b.fullCases || 0))
+    .slice(0, 3)
+
   return (
     <>
       <DashboardHeader title="Dashboard" description="Real-time overview of your depot" />
@@ -210,12 +230,12 @@ export default function DashboardPage() {
 
         {/* Charts - using real data */}
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-          <SalesTrendChart />
-          <BrandStockChart />
+          <SalesTrendChart sales={sales} expenses={expenses} />
+          <BrandStockChart products={products} />
         </div>
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-          <PaymentMethodChart />
+          <PaymentMethodChart sales={sales} />
           <div className="lg:col-span-2">
             <ActivityFeed activities={data.recentActivities || []} />
           </div>
@@ -228,33 +248,53 @@ export default function DashboardPage() {
             <CardHeader className="flex-row items-center justify-between space-y-0">
               <CardTitle className="text-base">Expiry Alerts</CardTitle>
               <Badge variant="secondary">
-                {data.expiringProducts > 0 ? data.expiringProducts : 0}
+                {expiringSoon.length + expiredProducts.length}
               </Badge>
             </CardHeader>
             <CardContent className="space-y-2">
-              {data.expiringProducts === 0 && data.expiredProducts === 0 && (
+              {expiringSoon.length === 0 && expiredProducts.length === 0 && (
                 <p className="py-4 text-center text-sm text-muted-foreground">
                   No products expiring soon. ✓
                 </p>
               )}
-              {data.expiringProducts > 0 && (
-                <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2">
+
+              {expiredProducts.map(({ product, days }) => (
+                <div
+                  key={`exp-${product.id}`}
+                  className="flex items-center justify-between rounded-lg border border-red-200 bg-red-50 px-3 py-2"
+                >
                   <div className="flex items-center gap-2">
-                    <CalendarClock className="size-4 text-primary" />
-                    <span className="text-sm font-medium">Products expiring soon</span>
+                    <AlertTriangle className="size-4 shrink-0 text-destructive" />
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-red-700">{product.name}</p>
+                      <p className="text-xs text-red-600">
+                        {formatNumber(product.fullCases || 0)} cases · expired {formatDate(product.expiryDate)}
+                      </p>
+                    </div>
                   </div>
-                  <Badge variant="secondary">{data.expiringProducts}</Badge>
+                  <Badge variant="destructive">{Math.abs(days)}d ago</Badge>
                 </div>
-              )}
-              {data.expiredProducts > 0 && (
-                <div className="flex items-center justify-between rounded-lg border border-red-200 bg-red-50 px-3 py-2">
+              ))}
+
+              {expiringSoon.map(({ product, days }) => (
+                <div
+                  key={`expsoon-${product.id}`}
+                  className="flex items-center justify-between rounded-lg border border-border px-3 py-2"
+                >
                   <div className="flex items-center gap-2">
-                    <AlertTriangle className="size-4 text-destructive" />
-                    <span className="text-sm font-medium text-red-700">Expired products</span>
+                    <CalendarClock className="size-4 shrink-0 text-primary" />
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium">{product.name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {formatNumber(product.fullCases || 0)} cases · expires {formatDate(product.expiryDate)}
+                      </p>
+                    </div>
                   </div>
-                  <Badge variant="destructive">{data.expiredProducts}</Badge>
+                  <Badge variant="secondary">
+                    {days === 0 ? "Today" : `${days}d left`}
+                  </Badge>
                 </div>
-              )}
+              ))}
             </CardContent>
           </Card>
 
@@ -262,23 +302,34 @@ export default function DashboardPage() {
           <Card>
             <CardHeader className="flex-row items-center justify-between space-y-0">
               <CardTitle className="text-base">Low Stock Alerts</CardTitle>
-              <Badge variant="secondary">{data.lowStockProducts}</Badge>
+              <Badge variant="secondary">{lowStockList.length}</Badge>
             </CardHeader>
             <CardContent className="space-y-2">
-              {data.lowStockProducts === 0 && (
+              {lowStockList.length === 0 && (
                 <p className="py-4 text-center text-sm text-muted-foreground">
                   All products are well stocked. ✓
                 </p>
               )}
-              {data.lowStockProducts > 0 && (
-                <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2">
+
+              {lowStockList.map((product) => (
+                <div
+                  key={`low-${product.id}`}
+                  className="flex items-center justify-between rounded-lg border border-border px-3 py-2"
+                >
                   <div className="flex items-center gap-2">
-                    <Package className="size-4 text-primary" />
-                    <span className="text-sm font-medium">Products below minimum stock</span>
+                    <Package className="size-4 shrink-0 text-primary" />
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium">{product.name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {formatNumber(product.fullCases || 0)} of {formatNumber(product.lowStockThreshold || 0)} min cases
+                      </p>
+                    </div>
                   </div>
-                  <Badge variant="outline">{data.lowStockProducts}</Badge>
+                  <Badge variant={(product.fullCases || 0) === 0 ? "destructive" : "outline"}>
+                    {(product.fullCases || 0) === 0 ? "Out" : "Low"}
+                  </Badge>
                 </div>
-              )}
+              ))}
             </CardContent>
           </Card>
         </div>

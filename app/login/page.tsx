@@ -80,8 +80,6 @@ export default function LoginPage() {
       const userRole = user.role as Role
       const redirectPath = roleLandingPage[userRole] || '/dashboard'
       
-      console.log(`Redirecting to: ${redirectPath} for role: ${userRole}`)
-      
       // Redirect to the user's role-based landing page
       router.push(redirectPath)
       

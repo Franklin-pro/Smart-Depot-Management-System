@@ -54,30 +54,53 @@ type AppState = {
   logout: () => void
   refreshData: () => Promise<void>
   
-  // Product CRUD - Fixed return types
-  addProduct: (p: any) => Promise<Product>  // Changed to accept any and return Product
+  // Product CRUD
+  addProduct: (p: any) => Promise<Product>
   updateProduct: (id: string | number, p: Partial<Product>) => Promise<void>
   deleteProduct: (id: string | number) => Promise<void>
   
+  // Customer CRUD
   addCustomer: (c: Omit<Customer, "id" | "createdAt" | "updatedAt">) => Promise<Customer>
   updateCustomer: (id: string, c: Partial<Customer>) => Promise<Customer>
   deleteCustomer: (id: string) => Promise<void>
+  
+  // Sale CRUD
   addSale: (s: NewSale) => Promise<Sale>
   recordEmptyReturn: (customerId: string, qty: number) => Promise<void>
+  
+  // Expense CRUD
   addExpense: (e: Omit<Expense, "id" | "invoiceNumber">) => Promise<void>
   updateExpense: (id: string, e: Partial<Expense>) => Promise<void>
   deleteExpense: (id: string) => Promise<void>
+  
+  // Supplier CRUD
   addSupplier: (s: Omit<Supplier, "id" | "createdAt">) => Promise<void>
-   addUser: (u: Omit<User, "id" | "createdAt">) => Promise<User>
+  
+  // User CRUD
+  addUser: (u: Omit<User, "id" | "createdAt">) => Promise<User>
   updateUser: (id: string, u: Partial<User>) => Promise<void>
   deleteUser: (id: string) => Promise<void>
+  
+  // Notification
   markNotificationsRead: (notificationIds?: string[]) => Promise<void>
+  
+  // Empty Case Transactions
   addEmptyCaseTransaction: (t: Omit<EmptyCaseTransaction, "id" | "createdAt" | "updatedAt">) => Promise<void>
   updateEmptyCaseTransaction: (id: string, t: Partial<EmptyCaseTransaction>) => Promise<void>
   processEmptyCaseReturn: (transactionId: string, returnQuantity: number, processedBy: string) => Promise<void>
+  
+  // Supplier Returns
   addSupplierReturn: (s: Omit<SupplierReturn, "id">) => Promise<void>
+  
+  // Damaged Cases
   addDamagedCase: (d: Omit<DamagedCase, "id">) => Promise<void>
+  updateDamagedCase: (d: DamagedCase) => void
+  deleteDamagedCase: (id: string) => void
+  
+  // Transaction Audit
   addTransactionAudit: (a: Omit<TransactionAudit, "id" | "performedAt">) => Promise<void>
+  
+  // Utilities
   checkAndGenerateNotifications: () => void
   
   // Setters for data refresh
@@ -381,15 +404,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     },
 
     // ============================================
-    // PRODUCT CRUD OPERATIONS - FIXED
+    // PRODUCT CRUD OPERATIONS
     // ============================================
     async addProduct(p: any): Promise<Product> {
       try {
-        console.log('📦 Store: Creating product with data:', p)
         
-        // Ensure all fields are properly formatted
         const productData = {
-          // Basic fields
           name: p.name,
           brand: p.brand,
           category: p.category,
@@ -403,8 +423,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
           expiryDate: p.expiryDate || new Date().toISOString(),
           lowStockThreshold: p.lowStockThreshold || 40,
           depositAmount: p.depositAmount || 0,
-          
-          // Extended fields - CRITICAL FOR BOTTLE TRACKING
           bottleInfo: p.bottleInfo || {
             damaged: 0,
             missing: 0,
@@ -427,15 +445,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
           balanceDue: p.balanceDue || 0,
         }
         
-        console.log('📤 Store: Sending to API:', productData)
-        
         const product = await productsService.create(productData)
         
         if (!product || !product.id) {
           throw new Error('Failed to create product: No product returned from API')
         }
-        
-        console.log('✅ Store: Product created successfully:', product)
         
         setProducts((prev) => [product, ...prev])
         pushActivity("stock", `${product.fullCases || 0} cases of ${product.name} added to inventory`)
@@ -449,9 +463,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     async updateProduct(id, patch) {
       try {
-        console.log('📦 Store: Updating product:', id, patch)
         
-        // Ensure we're preserving all fields
         const currentProduct = products.find(p => p.id === id)
         if (!currentProduct) {
           throw new Error(`Product with id ${id} not found`)
@@ -466,8 +478,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const updated = await productsService.update(id.toString(), updatedData)
         setProducts((prev) => prev.map((p) => (p.id === id ? updated : p)))
         pushActivity("stock", `${updated.name} updated`)
-        
-        console.log('✅ Store: Product updated successfully:', updated)
       } catch (error) {
         console.error('❌ Store: Failed to update product:', error)
         throw error
@@ -476,11 +486,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     async deleteProduct(id) {
       try {
-        console.log('🗑️ Store: Deleting product:', id)
         await productsService.delete(id.toString())
         setProducts((prev) => prev.filter((p) => p.id !== id))
         pushActivity("stock", `Product deleted`)
-        console.log('✅ Store: Product deleted successfully')
       } catch (error) {
         console.error('❌ Store: Failed to delete product:', error)
         throw error
@@ -631,6 +639,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       pushActivity("empty", `${processedBy} processed ${returnQuantity} empty case return from ${transaction.customerName || "Unknown"}`)
     },
 
+    // ============================================
+    // SUPPLIER RETURNS OPERATIONS
+    // ============================================
     async addSupplierReturn(s) {
       const supplierReturn = await supplierReturnsService.create(s)
       setSupplierReturns((prev) => [supplierReturn, ...prev])
@@ -647,6 +658,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       pushActivity("empty", `${supplierReturn.receivedBy} returned ${supplierReturn.quantity} cases to ${supplierReturn.supplierName}`)
     },
 
+    // ============================================
+    // DAMAGED CASES OPERATIONS - FIXED
+    // ============================================
     async addDamagedCase(d) {
       const damagedCase = await damagedCasesService.create(d)
       setDamagedCases((prev) => [damagedCase, ...prev])
@@ -663,6 +677,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
       pushActivity("empty", `${damagedCase.reportedBy} reported ${damagedCase.quantity} damaged cases of ${damagedCase.productName}`)
     },
 
+    // FIXED: These were using `set` which doesn't exist in Zustand/Context API
+    updateDamagedCase: (updatedDamagedCase: DamagedCase) => {
+      setDamagedCases((prev) => 
+        prev.map((dc) => dc.id === updatedDamagedCase.id ? updatedDamagedCase : dc)
+      )
+    },
+
+    deleteDamagedCase: (id: string) => {
+      setDamagedCases((prev) => prev.filter((dc) => dc.id !== id))
+    },
+
+    // ============================================
+    // TRANSACTION AUDIT OPERATIONS
+    // ============================================
     async addTransactionAudit(a) {
       const audit = await transactionAuditsService.create(a)
       setTransactionAudits((prev) => [audit, ...prev])
@@ -670,10 +698,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     checkAndGenerateNotifications,
   }), [
-    currentUser, ready, isLoading, 
-    products, suppliers, customers, sales, expenses, users, 
-    activities, notifications, emptyCaseTransactions, 
-    supplierReturns, damagedCases, transactionAudits
+    currentUser, 
+    ready, 
+    isLoading, 
+    products, 
+    suppliers, 
+    customers, 
+    sales, 
+    expenses, 
+    users, 
+    activities, 
+    notifications, 
+    emptyCaseTransactions, 
+    supplierReturns, 
+    damagedCases, 
+    transactionAudits
   ])
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>
